@@ -1,5 +1,7 @@
 export type SourceType = "cv" | "job" | "knowledge";
 
+export type ImportMode = "append" | "replace";
+
 export type PromptVersion = "rag_v1" | "rag_strict_v2" | "match_score_v1";
 
 export type DocumentInput = {

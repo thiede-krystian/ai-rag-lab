@@ -10,16 +10,21 @@ import {
   Code,
   Container,
   Divider,
+  FileInput,
   Group,
   JsonInput,
+  Modal,
   NumberInput,
   Paper,
   Progress,
+  Radio,
   Select,
   Stack,
   Table,
   Tabs,
+  TagsInput,
   Text,
+  TextInput,
   Textarea,
   Title,
   Tooltip,
@@ -53,6 +58,7 @@ import { seedDocuments } from "@/lib/seed-documents";
 import type {
   ChatResponse,
   EvalRun,
+  ImportMode,
   MatchResponse,
   PromptVersion,
   SearchResult,
@@ -63,11 +69,20 @@ const seedChunks = chunkDocuments(seedDocuments);
 const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
 const roleChunk = seedChunks.find((chunk) => chunk.sourceType === "job");
 
-const indexedDocuments = seedDocuments.map((document, index) => ({
+type DocumentRow = {
+  title: string;
+  type: string;
+  chunks: number;
+  status: string;
+  statusColor: string;
+};
+
+const indexedDocuments: DocumentRow[] = seedDocuments.map((document, index) => ({
   title: document.title,
   type: getSourceTypeLabel(document.sourceType),
   chunks: seedChunks.filter((chunk) => chunk.documentId === createDocumentId(document, index)).length,
   status: "Seeded",
+  statusColor: "green",
 }));
 
 const initialSearchResults: SearchResult[] = [
@@ -121,6 +136,12 @@ const embeddingProfileSelectData = embeddingProfileOptions.map((profile) => ({
   value: profile.id,
   label: `${profile.label} (${profile.dimensions})`,
 }));
+
+const sourceTypeSelectData = [
+  { value: "cv", label: "CV" },
+  { value: "job", label: "Job" },
+  { value: "knowledge", label: "Knowledge" },
+];
 
 export function RagLabShell() {
   const [embeddingProfile, setEmbeddingProfile] =
@@ -231,8 +252,18 @@ function DocumentsPanel({
 }) {
   const [isIngesting, setIsIngesting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [ingestSummary, setIngestSummary] = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportResponse | null>(null);
+  const [documentRows, setDocumentRows] = useState<DocumentRow[]>(indexedDocuments);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importTitle, setImportTitle] = useState("");
+  const [importSourceType, setImportSourceType] = useState<SourceType>("cv");
+  const [importTags, setImportTags] = useState<string[]>(["pdf"]);
+  const [importMode, setImportMode] = useState<ImportMode>("append");
   const selectedProfile = embeddingProfileOptions.find((profile) => profile.id === embeddingProfile);
+  const documentChunkCount = documentRows.reduce((sum, row) => sum + row.chunks, 0);
 
   async function handleSeedDocuments() {
     setIsIngesting(true);
@@ -256,6 +287,8 @@ function DocumentsPanel({
 
       const summary = `${payload.upserted} chunks indexed from ${payload.documents} documents with ${payload.model} (${payload.dimensions}d)`;
       setIngestSummary(summary);
+      setImportSummary(null);
+      setDocumentRows(indexedDocuments);
       notifications.show({
         title: "Seed corpus indexed",
         message: summary,
@@ -294,6 +327,8 @@ function DocumentsPanel({
       setIngestSummary(
         `${payload.collection} reset for ${payload.model} (${payload.dimensions}d). Seed documents before searching.`,
       );
+      setImportSummary(null);
+      setDocumentRows([]);
       notifications.show({
         title: "Qdrant collection reset",
         message: `${payload.collection} recreated with ${payload.dimensions} dimensions`,
@@ -310,11 +345,79 @@ function DocumentsPanel({
     }
   }
 
+  function handleImportFileChange(file: File | null) {
+    setImportFile(file);
+
+    if (file && !importTitle.trim()) {
+      setImportTitle(getTitleFromFilename(file.name));
+    }
+  }
+
+  async function handleImportDocument() {
+    if (!importFile) {
+      notifications.show({
+        title: "Import failed",
+        message: "Choose a PDF file first.",
+        color: "red",
+      });
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      formData.append("title", importTitle);
+      formData.append("sourceType", importSourceType);
+      formData.append("tags", JSON.stringify(importTags));
+      formData.append("embeddingProfile", embeddingProfile);
+      formData.append("mode", importMode);
+
+      const response = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as ImportResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not import PDF document.");
+      }
+
+      const summary = `${payload.filename}: ${payload.extractedCharacters} characters, ${payload.chunks} chunks, ${payload.model} (${payload.dimensions}d)`;
+      const row: DocumentRow = {
+        title: payload.title,
+        type: getSourceTypeLabel(payload.sourceType),
+        chunks: payload.chunks,
+        status: payload.mode === "replace" ? "Imported, replaced" : "Imported",
+        statusColor: "teal",
+      };
+
+      setImportSummary(payload);
+      setIngestSummary(summary);
+      setDocumentRows((currentRows) => (payload.mode === "replace" ? [row] : [row, ...currentRows]));
+      setIsImportOpen(false);
+      notifications.show({
+        title: "PDF imported",
+        message: summary,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Import failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group align="stretch" grow>
-        <MetricCard label="Documents" value={String(seedDocuments.length)} detail="seed corpus" />
-        <MetricCard label="Chunks" value={String(seedChunks.length)} detail="ready to index" />
+        <MetricCard label="Documents" value={String(documentRows.length)} detail="current table" />
+        <MetricCard label="Chunks" value={String(documentChunkCount)} detail="current table" />
         <MetricCard label="Vector collection" value="ai_rag_lab_documents" detail="Qdrant" />
       </Group>
 
@@ -350,8 +453,8 @@ function DocumentsPanel({
               >
                 Seed documents
               </Button>
-              <Button disabled leftSection={<UploadCloud size={16} />}>
-                Import text
+              <Button leftSection={<UploadCloud size={16} />} onClick={() => setIsImportOpen(true)}>
+                Import document
               </Button>
             </Group>
           </Group>
@@ -366,6 +469,18 @@ function DocumentsPanel({
               {ingestSummary}
             </Alert>
           ) : null}
+          {importSummary ? (
+            <Alert color="teal" variant="light" title="Last PDF import">
+              <Group gap="xs">
+                <Badge variant="light">{importSummary.filename}</Badge>
+                <Badge variant="light">{importSummary.pageCount} pages</Badge>
+                <Badge variant="light">{importSummary.extractedCharacters} chars</Badge>
+                <Badge variant="light">{importSummary.chunks} chunks</Badge>
+                <Badge variant="light">{importSummary.embeddingProfile}</Badge>
+                <Badge variant="light">{importSummary.dimensions}d</Badge>
+              </Group>
+            </Alert>
+          ) : null}
           <Table.ScrollContainer minWidth={640}>
             <Table verticalSpacing="sm">
               <Table.Thead>
@@ -377,25 +492,99 @@ function DocumentsPanel({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {indexedDocuments.map((document) => (
-                  <Table.Tr key={document.title}>
-                    <Table.Td>{document.title}</Table.Td>
-                    <Table.Td>
-                      <Badge variant="light">{document.type}</Badge>
-                    </Table.Td>
-                    <Table.Td>{document.chunks}</Table.Td>
-                    <Table.Td>
-                      <Badge color="green" variant="light">
-                        {document.status}
-                      </Badge>
+                {documentRows.length > 0 ? (
+                  documentRows.map((document) => (
+                    <Table.Tr key={`${document.title}-${document.status}`}>
+                      <Table.Td>{document.title}</Table.Td>
+                      <Table.Td>
+                        <Badge variant="light">{document.type}</Badge>
+                      </Table.Td>
+                      <Table.Td>{document.chunks}</Table.Td>
+                      <Table.Td>
+                        <Badge color={document.statusColor} variant="light">
+                          {document.status}
+                        </Badge>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                ) : (
+                  <Table.Tr>
+                    <Table.Td colSpan={4}>
+                      <Text c="dimmed" size="sm">
+                        No documents in the current table. Seed or import a document.
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                )}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
         </Stack>
       </Card>
+      <Modal
+        opened={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        title="Import PDF document"
+        centered
+      >
+        <Stack gap="md">
+          <FileInput
+            accept="application/pdf"
+            clearable
+            label="PDF file"
+            leftSection={<UploadCloud size={16} />}
+            onChange={handleImportFileChange}
+            placeholder="Choose searchable PDF"
+            value={importFile}
+          />
+          <TextInput
+            label="Title"
+            onChange={(event) => setImportTitle(event.currentTarget.value)}
+            placeholder="Candidate CV"
+            value={importTitle}
+          />
+          <Group grow align="flex-end">
+            <Select
+              data={sourceTypeSelectData}
+              label="Source type"
+              onChange={(value) => setImportSourceType((value as SourceType | null) ?? "cv")}
+              value={importSourceType}
+            />
+            <Select
+              data={embeddingProfileSelectData}
+              label="Embedding profile"
+              onChange={(value) =>
+                onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
+              }
+              value={embeddingProfile}
+            />
+          </Group>
+          <TagsInput label="Tags" onChange={setImportTags} placeholder="Add tag" value={importTags} />
+          <Radio.Group
+            label="Import mode"
+            onChange={(value) => setImportMode((value as ImportMode | null) ?? "append")}
+            value={importMode}
+          >
+            <Group mt="xs">
+              <Radio value="append" label="Append" />
+              <Radio value="replace" label="Replace all" />
+            </Group>
+          </Radio.Group>
+          <Alert color={importMode === "replace" ? "orange" : "blue"} variant="light">
+            {importMode === "replace"
+              ? "Replace all resets the Qdrant collection before importing this PDF."
+              : "Append adds this PDF to the current Qdrant collection."}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setIsImportOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={!importFile} loading={isImporting} onClick={handleImportDocument}>
+              Import PDF
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
@@ -851,6 +1040,10 @@ function getSourceTypeLabel(sourceType: SourceType) {
   return labels[sourceType];
 }
 
+function getTitleFromFilename(filename: string) {
+  return filename.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ").trim();
+}
+
 type IngestResponse = {
   documents: number;
   chunks: number;
@@ -858,6 +1051,24 @@ type IngestResponse = {
   embeddingProfile: EmbeddingProfileId;
   model: string;
   dimensions: number;
+  error?: string;
+};
+
+type ImportResponse = {
+  filename: string;
+  title: string;
+  sourceType: SourceType;
+  tags: string[];
+  mode: ImportMode;
+  documents: number;
+  chunks: number;
+  upserted: number;
+  extractedCharacters: number;
+  pageCount: number;
+  embeddingProfile: EmbeddingProfileId;
+  model: string;
+  dimensions: number;
+  pdfjsVersion: string;
   error?: string;
 };
 
