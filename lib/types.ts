@@ -70,4 +70,23 @@ export type EvalRun = {
   mrr: number;
   averageLatencyMs: number;
   passRate: number;
+  cases: EvalCaseResult[];
+};
+
+export type EvalCase = {
+  id: string;
+  query: string;
+  expectedChunkIds: string[];
+  expectedSourceType?: SourceType;
+};
+
+export type EvalCaseResult = {
+  id: string;
+  query: string;
+  expectedChunkIds: string[];
+  retrievedChunkIds: string[];
+  foundExpected: boolean;
+  firstRelevantRank: number | null;
+  reciprocalRank: number;
+  latencyMs: number;
 };

@@ -32,6 +32,7 @@ import {
   Database,
   FileText,
   Gauge,
+  ListChecks,
   Moon,
   Play,
   RefreshCw,
@@ -48,7 +49,14 @@ import {
   type EmbeddingProfileId,
 } from "@/lib/embedding-profiles";
 import { seedDocuments } from "@/lib/seed-documents";
-import type { ChatResponse, MatchResponse, PromptVersion, SearchResult, SourceType } from "@/lib/types";
+import type {
+  ChatResponse,
+  EvalRun,
+  MatchResponse,
+  PromptVersion,
+  SearchResult,
+  SourceType,
+} from "@/lib/types";
 
 const seedChunks = chunkDocuments(seedDocuments);
 const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
@@ -84,9 +92,27 @@ const initialSearchResults: SearchResult[] = [
   },
 ];
 
-const evalRows = [
-  { prompt: "rag_v1", recall: "0.78", mrr: "0.68", latency: "1.9s", passRate: 76 },
-  { prompt: "rag_strict_v2", recall: "0.84", mrr: "0.74", latency: "2.2s", passRate: 84 },
+const initialEvalRuns: EvalRun[] = [
+  {
+    id: "rag_v1-preview",
+    promptVersion: "rag_v1",
+    model: "preview",
+    recallAt5: 0.78,
+    mrr: 0.68,
+    averageLatencyMs: 1900,
+    passRate: 76,
+    cases: [],
+  },
+  {
+    id: "rag_strict_v2-preview",
+    promptVersion: "rag_strict_v2",
+    model: "preview",
+    recallAt5: 0.84,
+    mrr: 0.74,
+    averageLatencyMs: 2200,
+    passRate: 84,
+    cases: [],
+  },
 ];
 
 const embeddingProfileOptions = getEmbeddingProfileOptions();
@@ -162,7 +188,7 @@ export function RagLabShell() {
               <ChatPanel embeddingProfile={embeddingProfile} />
             </Tabs.Panel>
             <Tabs.Panel value="evals">
-              <EvalsPanel />
+              <EvalsPanel embeddingProfile={embeddingProfile} />
             </Tabs.Panel>
           </Tabs>
         </Container>
@@ -635,7 +661,54 @@ function MatchScoreResult({ result }: { result: MatchResponse }) {
   );
 }
 
-function EvalsPanel() {
+function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
+  const [evalRuns, setEvalRuns] = useState<EvalRun[]>(initialEvalRuns);
+  const [isRunning, setIsRunning] = useState(false);
+  const [lastRunSummary, setLastRunSummary] = useState<string | null>(null);
+
+  async function handleRunEvals() {
+    setIsRunning(true);
+
+    try {
+      const response = await fetch("/api/evals/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          embeddingProfile,
+          promptVersions: ["rag_v1", "rag_strict_v2"],
+          topK: 5,
+        }),
+      });
+      const payload = (await response.json()) as EvalRunResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not run evals.");
+      }
+
+      setEvalRuns(payload.runs);
+      setLastRunSummary(
+        `${payload.runs.length} prompt variants evaluated with ${payload.model} (${payload.dimensions}d)`,
+      );
+      notifications.show({
+        title: "Eval run complete",
+        message: `${payload.runs[0]?.cases.length ?? 0} golden-set cases evaluated`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Eval run failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  const caseRows = evalRuns[0]?.cases ?? [];
+
   return (
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
@@ -644,8 +717,20 @@ function EvalsPanel() {
             <Title order={3} size="h4">
               Prompt comparison
             </Title>
-            <Button leftSection={<Play size={16} />}>Run evals</Button>
+            <Button leftSection={<Play size={16} />} loading={isRunning} onClick={handleRunEvals}>
+              Run evals
+            </Button>
           </Group>
+          {lastRunSummary ? (
+            <Alert color="green" variant="light">
+              {lastRunSummary}
+            </Alert>
+          ) : (
+            <Alert color="blue" variant="light">
+              Evals use the current embedding profile and expect the Qdrant collection to be seeded
+              with the same profile.
+            </Alert>
+          )}
           <Table.ScrollContainer minWidth={640}>
             <Table verticalSpacing="sm">
               <Table.Thead>
@@ -658,22 +743,76 @@ function EvalsPanel() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {evalRows.map((row) => (
-                  <Table.Tr key={row.prompt}>
+                {evalRuns.map((row) => (
+                  <Table.Tr key={row.id}>
                     <Table.Td>
-                      <Code>{row.prompt}</Code>
+                      <Code>{row.promptVersion}</Code>
                     </Table.Td>
-                    <Table.Td>{row.recall}</Table.Td>
-                    <Table.Td>{row.mrr}</Table.Td>
-                    <Table.Td>{row.latency}</Table.Td>
+                    <Table.Td>{row.recallAt5.toFixed(2)}</Table.Td>
+                    <Table.Td>{row.mrr.toFixed(2)}</Table.Td>
+                    <Table.Td>{formatLatency(row.averageLatencyMs)}</Table.Td>
                     <Table.Td>
                       <Group gap="sm">
                         <Progress value={row.passRate} w={110} />
-                        <Text size="sm">{row.passRate}%</Text>
+                        <Text size="sm">{Math.round(row.passRate)}%</Text>
                       </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
+      </Card>
+      <Card withBorder radius="md" padding="lg">
+        <Stack gap="md">
+          <Group gap="xs">
+            <ListChecks size={18} />
+            <Title order={3} size="h4">
+              Golden-set cases
+            </Title>
+          </Group>
+          <Table.ScrollContainer minWidth={760}>
+            <Table verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Case</Table.Th>
+                  <Table.Th>Expected</Table.Th>
+                  <Table.Th>Retrieved</Table.Th>
+                  <Table.Th>Rank</Table.Th>
+                  <Table.Th>Latency</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {caseRows.length > 0 ? (
+                  caseRows.map((row) => (
+                    <Table.Tr key={row.id}>
+                      <Table.Td>{row.id}</Table.Td>
+                      <Table.Td>
+                        <Code>{row.expectedChunkIds.join(", ")}</Code>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" lineClamp={2}>
+                          {row.retrievedChunkIds.join(", ")}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={row.foundExpected ? "green" : "red"} variant="light">
+                          {row.firstRelevantRank ? `#${row.firstRelevantRank}` : "miss"}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{formatLatency(row.latencyMs)}</Table.Td>
+                    </Table.Tr>
+                  ))
+                ) : (
+                  <Table.Tr>
+                    <Table.Td colSpan={5}>
+                      <Text c="dimmed" size="sm">
+                        Run evals to inspect retrieval results for each golden-set case.
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -740,6 +879,15 @@ type MatchApiResponse = MatchResponse & {
   error?: string;
 };
 
+type EvalRunResponse = {
+  embeddingProfile: EmbeddingProfileId;
+  model: string;
+  dimensions: number;
+  topK: number;
+  runs: EvalRun[];
+  error?: string;
+};
+
 function getNumericTopK(value: number | string) {
   const parsed = typeof value === "number" ? value : Number(value);
 
@@ -773,4 +921,8 @@ function zipLists(left: string[], right: string[]) {
     strength: left[index] ?? "",
     gap: right[index] ?? "",
   }));
+}
+
+function formatLatency(value: number) {
+  return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
 }
