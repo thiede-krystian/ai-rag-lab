@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evaluateRetrievedChunks, summarizeEvalRun } from "@/lib/evals";
-import type { EvalCase, SearchResult } from "@/lib/types";
-
-const evalCase: EvalCase = {
-  id: "rag-case",
-  query: "rag pipeline",
-  expectedChunkIds: ["expected-chunk"],
-};
+import { evaluateTargetTitleRetrieval, summarizeQuickEvalRun } from "@/lib/evals";
+import type { SearchResult } from "@/lib/types";
 
 const results: SearchResult[] = [
   {
@@ -28,40 +22,66 @@ const results: SearchResult[] = [
 ];
 
 describe("eval metrics", () => {
-  it("tracks first relevant rank and reciprocal rank", () => {
-    const result = evaluateRetrievedChunks({
-      evalCase,
-      results,
-      latencyMs: 42,
+  it("evaluates quick retrieval by expected document title", () => {
+    const result = evaluateTargetTitleRetrieval({
+      id: "quick-1",
+      query: "RAG experience",
+      expectedTitle: "Imported CV",
+      results: [
+        {
+          id: "other",
+          title: "Other CV",
+          sourceType: "cv",
+          chunkIndex: 0,
+          score: 0.91,
+          text: "Other",
+        },
+        {
+          id: "imported",
+          title: "Imported CV",
+          sourceType: "cv",
+          chunkIndex: 1,
+          score: 0.87,
+          text: "RAG",
+        },
+      ],
+      latencyMs: 80,
     });
 
     expect(result.foundExpected).toBe(true);
     expect(result.firstRelevantRank).toBe(2);
     expect(result.reciprocalRank).toBe(0.5);
-    expect(result.latencyMs).toBe(42);
+    expect(result.retrievedTitles).toEqual(["Other CV", "Imported CV"]);
   });
 
-  it("summarizes retrieval cases into run metrics", () => {
-    const hit = evaluateRetrievedChunks({
-      evalCase,
+  it("summarizes quick eval cases", () => {
+    const hit = evaluateTargetTitleRetrieval({
+      id: "quick-1",
+      query: "RAG",
+      expectedTitle: "Imported CV",
       results,
       latencyMs: 100,
     });
-    const miss = evaluateRetrievedChunks({
-      evalCase: { ...evalCase, id: "miss", expectedChunkIds: ["missing-chunk"] },
+    const miss = evaluateTargetTitleRetrieval({
+      id: "quick-2",
+      query: "Rust",
+      expectedTitle: "Imported CV",
       results,
-      latencyMs: 200,
+      latencyMs: 300,
     });
 
-    const run = summarizeEvalRun({
+    const run = summarizeQuickEvalRun({
       cases: [hit, miss],
+      targetTitle: "Imported CV",
+      sourceType: "cv",
       model: "text-embedding-3-small",
-      promptVersion: "rag_v1",
     });
 
-    expect(run.recallAt5).toBe(0.5);
-    expect(run.mrr).toBe(0.25);
-    expect(run.averageLatencyMs).toBe(150);
-    expect(run.passRate).toBe(50);
+    expect(run.targetTitle).toBe("Imported CV");
+    expect(run.sourceType).toBe("cv");
+    expect(run.recallAtK).toBe(0);
+    expect(run.mrr).toBe(0);
+    expect(run.averageLatencyMs).toBe(200);
+    expect(run.passRate).toBe(0);
   });
 });

@@ -4,8 +4,8 @@ import type { SearchResult } from "@/lib/types";
 
 const chunks: SearchResult[] = [
   {
-    id: "candidate-profile-chunk-1",
-    title: "Candidate profile",
+    id: "imported-cv-chunk-1",
+    title: "Imported CV",
     sourceType: "cv",
     chunkIndex: 0,
     score: 0.91,
@@ -22,7 +22,7 @@ describe("RAG prompts", () => {
     });
 
     expect(messages[0]?.content).toContain("Use only the provided context");
-    expect(messages[1]?.content).toContain("[S1] Candidate profile / cv / chunk 1");
+    expect(messages[1]?.content).toContain("[S1] Imported CV / cv / chunk 1");
     expect(messages[1]?.content).toContain("Is this candidate a fit?");
   });
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { chunkDocument, chunkDocuments, createDocumentId, normalizeText } from "@/lib/chunking";
-import { seedDocuments } from "@/lib/seed-documents";
 import type { DocumentInput } from "@/lib/types";
 
 const document: DocumentInput = {
@@ -18,8 +17,8 @@ describe("chunking", () => {
 
   it("creates stable document ids", () => {
     expect(createDocumentId(document)).toBe("demo-doc");
-    expect(createDocumentId({ ...document, id: undefined, title: "AI Engineer Role!" })).toBe(
-      "ai-engineer-role",
+    expect(createDocumentId({ ...document, id: undefined, title: "Senior AI Specialist!" })).toBe(
+      "senior-ai-specialist",
     );
   });
 
@@ -54,13 +53,23 @@ describe("chunking", () => {
     );
   });
 
-  it("chunks the bundled seed corpus", () => {
-    const chunks = chunkDocuments(seedDocuments);
+  it("chunks an explicit document list", () => {
+    const documents: DocumentInput[] = [
+      document,
+      {
+        id: "job-role",
+        title: "Job Role",
+        sourceType: "job",
+        content: "one two three four five six seven eight nine ten eleven twelve",
+      },
+    ];
+    const chunks = chunkDocuments(documents, {
+      targetWords: 5,
+      overlapWords: 2,
+    });
 
-    expect(seedDocuments).toHaveLength(3);
-    expect(chunks.length).toBeGreaterThan(seedDocuments.length);
-    expect(chunks.map((chunk) => chunk.documentId)).toContain("candidate-profile");
-    expect(chunks.map((chunk) => chunk.documentId)).toContain("ai-engineer-role");
-    expect(chunks.map((chunk) => chunk.documentId)).toContain("rag-evals-notes");
+    expect(chunks).toHaveLength(8);
+    expect(chunks.map((chunk) => chunk.documentId)).toContain("demo-doc");
+    expect(chunks.map((chunk) => chunk.documentId)).toContain("job-role");
   });
 });
