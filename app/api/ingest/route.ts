@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createEmbeddings } from "@/lib/ai/embeddings";
 import { chunkDocuments } from "@/lib/chunking";
+import { getEmbeddingProfile } from "@/lib/embedding-profiles";
 import { seedDocuments } from "@/lib/seed-documents";
-import { upsertChunks } from "@/lib/qdrant";
+import { resetDocumentCollection, upsertChunks } from "@/lib/qdrant";
 import type { DocumentInput } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,6 +20,8 @@ const documentSchema = z.object({
 const ingestRequestSchema = z
   .object({
     documents: z.array(documentSchema).optional(),
+    embeddingProfile: z.enum(["balanced", "large"]).optional(),
+    resetCollection: z.boolean().optional(),
   })
   .optional();
 
@@ -27,14 +30,23 @@ export async function POST(request: Request) {
     const body = await parseOptionalJson(request);
     const parsed = ingestRequestSchema.parse(body);
     const documents = (parsed?.documents ?? seedDocuments) as DocumentInput[];
+    const profile = getEmbeddingProfile(parsed?.embeddingProfile);
     const chunks = chunkDocuments(documents);
-    const vectors = await createEmbeddings(chunks.map((chunk) => chunk.text));
+    const vectors = await createEmbeddings(chunks.map((chunk) => chunk.text), profile.id);
+
+    if (parsed?.resetCollection) {
+      await resetDocumentCollection(profile.dimensions);
+    }
+
     const result = await upsertChunks(chunks, vectors);
 
     return NextResponse.json({
       documents: documents.length,
       chunks: chunks.length,
       upserted: result.upserted,
+      embeddingProfile: profile.id,
+      model: profile.model,
+      dimensions: profile.dimensions,
     });
   } catch (error) {
     return jsonError(error);

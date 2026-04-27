@@ -1,14 +1,15 @@
-import { embeddingConfig } from "@/lib/config";
 import { getOpenRouterClient } from "@/lib/ai/openrouter-client";
+import { getEmbeddingProfile, type EmbeddingProfileId } from "@/lib/embedding-profiles";
 
-export async function createEmbeddings(input: string[]) {
+export async function createEmbeddings(input: string[], profileId?: EmbeddingProfileId) {
   if (input.length === 0) {
     return [];
   }
 
+  const profile = getEmbeddingProfile(profileId);
   const response = await getOpenRouterClient().embeddings.create({
-    model: embeddingConfig.model,
-    dimensions: embeddingConfig.dimensions,
+    model: profile.model,
+    dimensions: profile.dimensions,
     input,
   });
 
@@ -17,8 +18,8 @@ export async function createEmbeddings(input: string[]) {
     .map((item) => item.embedding);
 }
 
-export async function createEmbedding(input: string) {
-  const [embedding] = await createEmbeddings([input]);
+export async function createEmbedding(input: string, profileId?: EmbeddingProfileId) {
+  const [embedding] = await createEmbeddings([input], profileId);
 
   if (!embedding) {
     throw new Error("Embedding response did not include a vector.");

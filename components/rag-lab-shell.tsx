@@ -34,6 +34,7 @@ import {
   Gauge,
   Moon,
   Play,
+  RefreshCw,
   Search,
   Sparkles,
   Sun,
@@ -41,6 +42,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { chunkDocuments, createDocumentId } from "@/lib/chunking";
+import {
+  defaultEmbeddingProfileId,
+  getEmbeddingProfileOptions,
+  type EmbeddingProfileId,
+} from "@/lib/embedding-profiles";
 import { seedDocuments } from "@/lib/seed-documents";
 import type { ChatResponse, MatchResponse, PromptVersion, SearchResult, SourceType } from "@/lib/types";
 
@@ -83,7 +89,16 @@ const evalRows = [
   { prompt: "rag_strict_v2", recall: "0.84", mrr: "0.74", latency: "2.2s", passRate: 84 },
 ];
 
+const embeddingProfileOptions = getEmbeddingProfileOptions();
+const embeddingProfileSelectData = embeddingProfileOptions.map((profile) => ({
+  value: profile.id,
+  label: `${profile.label} (${profile.dimensions})`,
+}));
+
 export function RagLabShell() {
+  const [embeddingProfile, setEmbeddingProfile] =
+    useState<EmbeddingProfileId>(defaultEmbeddingProfileId);
+
   return (
     <AppShell header={{ height: 72 }} padding="md">
       <AppShell.Header>
@@ -135,13 +150,16 @@ export function RagLabShell() {
             </Tabs.List>
 
             <Tabs.Panel value="documents">
-              <DocumentsPanel />
+              <DocumentsPanel
+                embeddingProfile={embeddingProfile}
+                onEmbeddingProfileChange={setEmbeddingProfile}
+              />
             </Tabs.Panel>
             <Tabs.Panel value="search">
-              <SearchPanel />
+              <SearchPanel embeddingProfile={embeddingProfile} />
             </Tabs.Panel>
             <Tabs.Panel value="chat">
-              <ChatPanel />
+              <ChatPanel embeddingProfile={embeddingProfile} />
             </Tabs.Panel>
             <Tabs.Panel value="evals">
               <EvalsPanel />
@@ -175,9 +193,17 @@ function ColorSchemeToggle() {
   );
 }
 
-function DocumentsPanel() {
+function DocumentsPanel({
+  embeddingProfile,
+  onEmbeddingProfileChange,
+}: {
+  embeddingProfile: EmbeddingProfileId;
+  onEmbeddingProfileChange: (profile: EmbeddingProfileId) => void;
+}) {
   const [isIngesting, setIsIngesting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [ingestSummary, setIngestSummary] = useState<string | null>(null);
+  const selectedProfile = embeddingProfileOptions.find((profile) => profile.id === embeddingProfile);
 
   async function handleSeedDocuments() {
     setIsIngesting(true);
@@ -185,6 +211,13 @@ function DocumentsPanel() {
     try {
       const response = await fetch("/api/ingest", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          embeddingProfile,
+          resetCollection: true,
+        }),
       });
       const payload = (await response.json()) as IngestResponse;
 
@@ -192,7 +225,7 @@ function DocumentsPanel() {
         throw new Error(payload.error ?? "Could not ingest seed documents.");
       }
 
-      const summary = `${payload.upserted} chunks indexed from ${payload.documents} documents`;
+      const summary = `${payload.upserted} chunks indexed from ${payload.documents} documents with ${payload.model} (${payload.dimensions}d)`;
       setIngestSummary(summary);
       notifications.show({
         title: "Seed corpus indexed",
@@ -210,6 +243,44 @@ function DocumentsPanel() {
     }
   }
 
+  async function handleResetCollection() {
+    setIsResetting(true);
+
+    try {
+      const response = await fetch("/api/collection/reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          embeddingProfile,
+        }),
+      });
+      const payload = (await response.json()) as ResetCollectionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not reset Qdrant collection.");
+      }
+
+      setIngestSummary(
+        `${payload.collection} reset for ${payload.model} (${payload.dimensions}d). Seed documents before searching.`,
+      );
+      notifications.show({
+        title: "Qdrant collection reset",
+        message: `${payload.collection} recreated with ${payload.dimensions} dimensions`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Collection reset failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group align="stretch" grow>
@@ -220,11 +291,28 @@ function DocumentsPanel() {
 
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group justify="space-between">
+          <Group align="flex-end" justify="space-between">
             <Title order={3} size="h4">
               Corpus
             </Title>
             <Group>
+              <Select
+                label="Embedding profile"
+                onChange={(value) =>
+                  onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
+                }
+                value={embeddingProfile}
+                data={embeddingProfileSelectData}
+                w={230}
+              />
+              <Button
+                leftSection={<RefreshCw size={16} />}
+                loading={isResetting}
+                onClick={handleResetCollection}
+                variant="outline"
+              >
+                Reset collection
+              </Button>
               <Button
                 leftSection={<Sparkles size={16} />}
                 loading={isIngesting}
@@ -238,6 +326,12 @@ function DocumentsPanel() {
               </Button>
             </Group>
           </Group>
+          {selectedProfile ? (
+            <Alert color="blue" variant="light">
+              {selectedProfile.description} Model: <Code>{selectedProfile.model}</Code>, dimensions:{" "}
+              <Code>{selectedProfile.dimensions}</Code>. Seeding resets the Qdrant collection first.
+            </Alert>
+          ) : null}
           {ingestSummary ? (
             <Alert color="green" variant="light">
               {ingestSummary}
@@ -277,7 +371,7 @@ function DocumentsPanel() {
   );
 }
 
-function SearchPanel() {
+function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
   const [query, setQuery] = useState(
     "AI engineer with RAG, vector search, Next.js and TypeScript experience",
   );
@@ -297,6 +391,7 @@ function SearchPanel() {
         body: JSON.stringify({
           query,
           topK: getNumericTopK(topK),
+          embeddingProfile,
         }),
       });
       const payload = (await response.json()) as SearchResponse;
@@ -366,7 +461,7 @@ function SearchPanel() {
   );
 }
 
-function ChatPanel() {
+function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
   const [question, setQuestion] = useState("How well does this candidate match the AI Engineer role?");
   const [promptVersion, setPromptVersion] = useState<PromptVersion>("rag_strict_v2");
   const [topK, setTopK] = useState<number | string>(5);
@@ -388,6 +483,7 @@ function ChatPanel() {
           question,
           topK: getNumericTopK(topK),
           promptVersion,
+          embeddingProfile,
         }),
       });
       const payload = (await response.json()) as ChatApiResponse;
@@ -617,6 +713,17 @@ type IngestResponse = {
   documents: number;
   chunks: number;
   upserted: number;
+  embeddingProfile: EmbeddingProfileId;
+  model: string;
+  dimensions: number;
+  error?: string;
+};
+
+type ResetCollectionResponse = {
+  collection: string;
+  embeddingProfile: EmbeddingProfileId;
+  model: string;
+  dimensions: number;
   error?: string;
 };
 

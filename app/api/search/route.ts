@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 const searchRequestSchema = z.object({
   query: z.string().min(1),
   topK: z.number().int().min(1).max(20).default(5),
+  embeddingProfile: z.enum(["balanced", "large"]).optional(),
   filters: z
     .object({
       sourceType: z.enum(["cv", "job", "knowledge"]).optional(),
@@ -19,7 +20,7 @@ const searchRequestSchema = z.object({
 export async function POST(request: Request) {
   try {
     const input = searchRequestSchema.parse(await request.json());
-    const queryVector = await createEmbedding(input.query);
+    const queryVector = await createEmbedding(input.query, input.embeddingProfile);
     const results = await searchChunks({
       queryVector,
       topK: input.topK,

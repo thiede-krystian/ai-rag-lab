@@ -40,25 +40,57 @@ export function createStablePointId(value: string) {
 
 export async function ensureDocumentCollection(vectorSize: number) {
   const client = getQdrantClient();
-  const collections = await client.getCollections();
-  const exists = collections.collections.some(
-    (collection) => collection.name === qdrantConfig.collection,
-  );
+  const exists = await collectionExists();
 
   if (!exists) {
-    await client.createCollection(qdrantConfig.collection, {
-      vectors: {
-        size: vectorSize,
-        distance: "Cosine",
-      },
-      hnsw_config: {
-        m: 16,
-        ef_construct: 100,
-      },
-    });
+    await createDocumentCollection(vectorSize);
+  } else {
+    const collectionInfo = await client.getCollection(qdrantConfig.collection);
+    const existingVectorSize = getCollectionVectorSize(collectionInfo);
+
+    if (existingVectorSize && existingVectorSize !== vectorSize) {
+      throw new Error(
+        `Qdrant collection uses ${existingVectorSize}-dimensional vectors, but the selected embedding profile produced ${vectorSize}. Reset the collection before seeding this profile.`,
+      );
+    }
   }
 
   await ensurePayloadIndexes();
+}
+
+export async function resetDocumentCollection(vectorSize: number) {
+  if (await collectionExists()) {
+    await getQdrantClient().deleteCollection(qdrantConfig.collection, {
+      timeout: 30,
+    });
+  }
+
+  await createDocumentCollection(vectorSize);
+  await ensurePayloadIndexes();
+
+  return {
+    collection: qdrantConfig.collection,
+    vectorSize,
+  };
+}
+
+async function collectionExists() {
+  const collections = await getQdrantClient().getCollections();
+
+  return collections.collections.some((collection) => collection.name === qdrantConfig.collection);
+}
+
+async function createDocumentCollection(vectorSize: number) {
+  await getQdrantClient().createCollection(qdrantConfig.collection, {
+    vectors: {
+      size: vectorSize,
+      distance: "Cosine",
+    },
+    hnsw_config: {
+      m: 16,
+      ef_construct: 100,
+    },
+  });
 }
 
 async function ensurePayloadIndexes() {
@@ -205,4 +237,24 @@ function getNumber(value: unknown) {
 
 function getSourceType(value: unknown): SourceType | undefined {
   return value === "cv" || value === "job" || value === "knowledge" ? value : undefined;
+}
+
+function getCollectionVectorSize(collectionInfo: unknown) {
+  const vectors = (collectionInfo as { config?: { params?: { vectors?: unknown } } }).config?.params
+    ?.vectors;
+
+  if (isVectorParams(vectors)) {
+    return vectors.size;
+  }
+
+  return undefined;
+}
+
+function isVectorParams(value: unknown): value is { size: number } {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "size" in value &&
+      typeof (value as { size?: unknown }).size === "number",
+  );
 }

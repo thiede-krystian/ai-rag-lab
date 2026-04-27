@@ -33,3 +33,12 @@ docker compose up -d
 3. Qdrant collection, OpenRouter embeddings, ingestion, search
 4. OpenRouter RAG chat and CV-job match scoring
 5. Eval runner and dashboard
+
+## Embedding Profiles
+
+- `balanced`: `text-embedding-3-small`, 1536 dimensions
+- `large`: `text-embedding-3-large`, 3072 dimensions
+
+Changing profiles requires a Qdrant collection reset because vector dimensions
+must match the collection configuration. The app exposes a reset action in the
+Documents tab and also resets before seed ingestion.
