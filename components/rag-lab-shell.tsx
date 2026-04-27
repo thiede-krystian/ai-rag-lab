@@ -38,98 +38,29 @@ import {
   Database,
   FileText,
   Gauge,
-  ListChecks,
   Moon,
   Play,
   RefreshCw,
   Search,
-  Sparkles,
   Sun,
   UploadCloud,
 } from "lucide-react";
-import { useState } from "react";
-import { chunkDocuments, createDocumentId } from "@/lib/chunking";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   defaultEmbeddingProfileId,
   getEmbeddingProfileOptions,
   type EmbeddingProfileId,
 } from "@/lib/embedding-profiles";
-import { seedDocuments } from "@/lib/seed-documents";
 import type {
   ChatResponse,
-  EvalRun,
   ImportMode,
+  IndexedDocument,
   MatchResponse,
   PromptVersion,
+  QuickEvalRun,
   SearchResult,
   SourceType,
 } from "@/lib/types";
-
-const seedChunks = chunkDocuments(seedDocuments);
-const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
-const roleChunk = seedChunks.find((chunk) => chunk.sourceType === "job");
-
-type DocumentRow = {
-  title: string;
-  type: string;
-  chunks: number;
-  status: string;
-  statusColor: string;
-};
-
-const indexedDocuments: DocumentRow[] = seedDocuments.map((document, index) => ({
-  title: document.title,
-  type: getSourceTypeLabel(document.sourceType),
-  chunks: seedChunks.filter((chunk) => chunk.documentId === createDocumentId(document, index)).length,
-  status: "Seeded",
-  statusColor: "green",
-}));
-
-const initialSearchResults: SearchResult[] = [
-  {
-    id: candidateChunk?.id ?? "candidate-profile-chunk-1",
-    title: candidateChunk?.title ?? "Candidate profile",
-    chunkIndex: candidateChunk?.chunkIndex ?? 0,
-    sourceType: candidateChunk?.sourceType ?? "cv",
-    score: 0.91,
-    text:
-      candidateChunk?.text ??
-      "Daily work with Next.js, Node.js, TypeScript, AI coding tools, and LLM-driven product workflows.",
-  },
-  {
-    id: roleChunk?.id ?? "ai-engineer-role-chunk-1",
-    title: roleChunk?.title ?? "AI Engineer role",
-    chunkIndex: roleChunk?.chunkIndex ?? 0,
-    sourceType: roleChunk?.sourceType ?? "job",
-    score: 0.87,
-    text:
-      roleChunk?.text ??
-      "The position focuses on embeddings, prompt engineering, semantic search, and RAG-based AI features.",
-  },
-];
-
-const initialEvalRuns: EvalRun[] = [
-  {
-    id: "rag_v1-preview",
-    promptVersion: "rag_v1",
-    model: "preview",
-    recallAt5: 0.78,
-    mrr: 0.68,
-    averageLatencyMs: 1900,
-    passRate: 76,
-    cases: [],
-  },
-  {
-    id: "rag_strict_v2-preview",
-    promptVersion: "rag_strict_v2",
-    model: "preview",
-    recallAt5: 0.84,
-    mrr: 0.74,
-    averageLatencyMs: 2200,
-    passRate: 84,
-    cases: [],
-  },
-];
 
 const embeddingProfileOptions = getEmbeddingProfileOptions();
 const embeddingProfileSelectData = embeddingProfileOptions.map((profile) => ({
@@ -141,6 +72,11 @@ const sourceTypeSelectData = [
   { value: "cv", label: "CV" },
   { value: "job", label: "Job" },
   { value: "knowledge", label: "Knowledge" },
+];
+
+const ragPromptOptions = [
+  { value: "rag_strict_v2", label: "rag_strict_v2" },
+  { value: "rag_v1", label: "rag_v1" },
 ];
 
 export function RagLabShell() {
@@ -250,60 +186,67 @@ function DocumentsPanel({
   embeddingProfile: EmbeddingProfileId;
   onEmbeddingProfileChange: (profile: EmbeddingProfileId) => void;
 }) {
-  const [isIngesting, setIsIngesting] = useState(false);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isAddingTextDocument, setIsAddingTextDocument] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isTextDocumentOpen, setIsTextDocumentOpen] = useState(false);
   const [ingestSummary, setIngestSummary] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<ImportResponse | null>(null);
-  const [documentRows, setDocumentRows] = useState<DocumentRow[]>(indexedDocuments);
+  const [documentRows, setDocumentRows] = useState<IndexedDocument[]>([]);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importTitle, setImportTitle] = useState("");
   const [importSourceType, setImportSourceType] = useState<SourceType>("cv");
   const [importTags, setImportTags] = useState<string[]>(["pdf"]);
   const [importMode, setImportMode] = useState<ImportMode>("append");
+  const [textTitle, setTextTitle] = useState("");
+  const [textContent, setTextContent] = useState("");
+  const [textSourceType, setTextSourceType] = useState<SourceType>("knowledge");
+  const [textTags, setTextTags] = useState<string[]>(["manual"]);
+  const [textMode, setTextMode] = useState<ImportMode>("append");
   const selectedProfile = embeddingProfileOptions.find((profile) => profile.id === embeddingProfile);
   const documentChunkCount = documentRows.reduce((sum, row) => sum + row.chunks, 0);
 
-  async function handleSeedDocuments() {
-    setIsIngesting(true);
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
 
     try {
-      const response = await fetch("/api/ingest", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          embeddingProfile,
-          resetCollection: true,
-        }),
-      });
-      const payload = (await response.json()) as IngestResponse;
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Could not ingest seed documents.");
-      }
-
-      const summary = `${payload.upserted} chunks indexed from ${payload.documents} documents with ${payload.model} (${payload.dimensions}d)`;
-      setIngestSummary(summary);
-      setImportSummary(null);
-      setDocumentRows(indexedDocuments);
-      notifications.show({
-        title: "Seed corpus indexed",
-        message: summary,
-        color: "green",
-      });
+      setDocumentRows(await fetchDocumentInventory());
     } catch (error) {
       notifications.show({
-        title: "Ingestion failed",
+        title: "Document inventory failed",
         message: getErrorMessage(error),
         color: "red",
       });
     } finally {
-      setIsIngesting(false);
+      setIsLoadingDocuments(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchDocumentInventory()
+      .then((documents) => {
+        if (isActive) {
+          setDocumentRows(documents);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          notifications.show({
+            title: "Document inventory failed",
+            message: getErrorMessage(error),
+            color: "red",
+          });
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   async function handleResetCollection() {
     setIsResetting(true);
@@ -324,9 +267,7 @@ function DocumentsPanel({
         throw new Error(payload.error ?? "Could not reset Qdrant collection.");
       }
 
-      setIngestSummary(
-        `${payload.collection} reset for ${payload.model} (${payload.dimensions}d). Seed documents before searching.`,
-      );
+      setIngestSummary(`${payload.collection} reset for ${payload.model} (${payload.dimensions}d).`);
       setImportSummary(null);
       setDocumentRows([]);
       notifications.show({
@@ -385,17 +326,10 @@ function DocumentsPanel({
       }
 
       const summary = `${payload.filename}: ${payload.extractedCharacters} characters, ${payload.chunks} chunks, ${payload.model} (${payload.dimensions}d)`;
-      const row: DocumentRow = {
-        title: payload.title,
-        type: getSourceTypeLabel(payload.sourceType),
-        chunks: payload.chunks,
-        status: payload.mode === "replace" ? "Imported, replaced" : "Imported",
-        statusColor: "teal",
-      };
 
       setImportSummary(payload);
       setIngestSummary(summary);
-      setDocumentRows((currentRows) => (payload.mode === "replace" ? [row] : [row, ...currentRows]));
+      await loadDocuments();
       setIsImportOpen(false);
       notifications.show({
         title: "PDF imported",
@@ -413,11 +347,74 @@ function DocumentsPanel({
     }
   }
 
+  async function handleAddTextDocument() {
+    const title = textTitle.trim();
+    const content = textContent.trim();
+
+    if (!title || !content) {
+      notifications.show({
+        title: "Text document failed",
+        message: "Provide both title and document content.",
+        color: "red",
+      });
+      return;
+    }
+
+    setIsAddingTextDocument(true);
+
+    try {
+      const response = await fetch("/api/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documents: [
+            {
+              id: createManualDocumentId(title, textSourceType),
+              title,
+              sourceType: textSourceType,
+              content,
+              tags: textTags,
+            },
+          ],
+          embeddingProfile,
+          resetCollection: textMode === "replace",
+        }),
+      });
+      const payload = (await response.json()) as TextIngestResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not add text document.");
+      }
+
+      const summary = `${title}: ${payload.chunks} chunks indexed with ${payload.model} (${payload.dimensions}d)`;
+
+      setIngestSummary(summary);
+      setImportSummary(null);
+      await loadDocuments();
+      setIsTextDocumentOpen(false);
+      notifications.show({
+        title: "Text document indexed",
+        message: summary,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Text document failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsAddingTextDocument(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group align="stretch" grow>
-        <MetricCard label="Documents" value={String(documentRows.length)} detail="current table" />
-        <MetricCard label="Chunks" value={String(documentChunkCount)} detail="current table" />
+        <MetricCard label="Documents" value={String(documentRows.length)} detail="Qdrant inventory" />
+        <MetricCard label="Chunks" value={String(documentChunkCount)} detail="indexed payloads" />
         <MetricCard label="Vector collection" value="ai_rag_lab_documents" detail="Qdrant" />
       </Group>
 
@@ -439,29 +436,33 @@ function DocumentsPanel({
               />
               <Button
                 leftSection={<RefreshCw size={16} />}
+                loading={isLoadingDocuments}
+                onClick={loadDocuments}
+                variant="default"
+              >
+                Refresh
+              </Button>
+              <Button
+                leftSection={<RefreshCw size={16} />}
                 loading={isResetting}
                 onClick={handleResetCollection}
                 variant="outline"
               >
                 Reset collection
               </Button>
-              <Button
-                leftSection={<Sparkles size={16} />}
-                loading={isIngesting}
-                onClick={handleSeedDocuments}
-                variant="light"
-              >
-                Seed documents
+              <Button leftSection={<FileText size={16} />} onClick={() => setIsTextDocumentOpen(true)}>
+                Add text
               </Button>
               <Button leftSection={<UploadCloud size={16} />} onClick={() => setIsImportOpen(true)}>
-                Import document
+                Import PDF
               </Button>
             </Group>
           </Group>
           {selectedProfile ? (
             <Alert color="blue" variant="light">
               {selectedProfile.description} Model: <Code>{selectedProfile.model}</Code>, dimensions:{" "}
-              <Code>{selectedProfile.dimensions}</Code>. Seeding resets the Qdrant collection first.
+              <Code>{selectedProfile.dimensions}</Code>. Use the same profile for all documents in one Qdrant
+              collection.
             </Alert>
           ) : null}
           {ingestSummary ? (
@@ -488,22 +489,32 @@ function DocumentsPanel({
                   <Table.Th>Document</Table.Th>
                   <Table.Th>Type</Table.Th>
                   <Table.Th>Chunks</Table.Th>
-                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Tags</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {documentRows.length > 0 ? (
                   documentRows.map((document) => (
-                    <Table.Tr key={`${document.title}-${document.status}`}>
+                    <Table.Tr key={`${document.sourceType}-${document.title}`}>
                       <Table.Td>{document.title}</Table.Td>
                       <Table.Td>
-                        <Badge variant="light">{document.type}</Badge>
+                        <Badge variant="light">{getSourceTypeLabel(document.sourceType)}</Badge>
                       </Table.Td>
                       <Table.Td>{document.chunks}</Table.Td>
                       <Table.Td>
-                        <Badge color={document.statusColor} variant="light">
-                          {document.status}
-                        </Badge>
+                        <Group gap={4}>
+                          {document.tags.length > 0 ? (
+                            document.tags.map((tag) => (
+                              <Badge key={tag} color="gray" variant="light">
+                                {tag}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Text c="dimmed" size="sm">
+                              -
+                            </Text>
+                          )}
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))
@@ -511,7 +522,7 @@ function DocumentsPanel({
                   <Table.Tr>
                     <Table.Td colSpan={4}>
                       <Text c="dimmed" size="sm">
-                        No documents in the current table. Seed or import a document.
+                        No documents indexed in Qdrant yet. Import a searchable PDF to start.
                       </Text>
                     </Table.Td>
                   </Table.Tr>
@@ -521,6 +532,74 @@ function DocumentsPanel({
           </Table.ScrollContainer>
         </Stack>
       </Card>
+      <Modal
+        opened={isTextDocumentOpen}
+        onClose={() => setIsTextDocumentOpen(false)}
+        title="Add text document"
+        centered
+        size="lg"
+      >
+        <Stack gap="md">
+          <TextInput
+            label="Title"
+            onChange={(event) => setTextTitle(event.currentTarget.value)}
+            placeholder="Job offer, CV note, knowledge article"
+            value={textTitle}
+          />
+          <Group grow align="flex-end">
+            <Select
+              data={sourceTypeSelectData}
+              label="Source type"
+              onChange={(value) => setTextSourceType((value as SourceType | null) ?? "knowledge")}
+              value={textSourceType}
+            />
+            <Select
+              data={embeddingProfileSelectData}
+              label="Embedding profile"
+              onChange={(value) =>
+                onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
+              }
+              value={embeddingProfile}
+            />
+          </Group>
+          <TagsInput label="Tags" onChange={setTextTags} placeholder="Add tag" value={textTags} />
+          <Textarea
+            autosize
+            label="Document content"
+            minRows={10}
+            onChange={(event) => setTextContent(event.currentTarget.value)}
+            placeholder="Paste CV, job offer, notes, or knowledge text here"
+            value={textContent}
+          />
+          <Radio.Group
+            label="Import mode"
+            onChange={(value) => setTextMode((value as ImportMode | null) ?? "append")}
+            value={textMode}
+          >
+            <Group mt="xs">
+              <Radio value="append" label="Append" />
+              <Radio value="replace" label="Replace all" />
+            </Group>
+          </Radio.Group>
+          <Alert color={textMode === "replace" ? "orange" : "blue"} variant="light">
+            {textMode === "replace"
+              ? "Replace all resets the Qdrant collection before indexing this text document."
+              : "Append adds this text document to the current Qdrant collection."}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setIsTextDocumentOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!textTitle.trim() || !textContent.trim()}
+              loading={isAddingTextDocument}
+              onClick={handleAddTextDocument}
+            >
+              Add document
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={isImportOpen}
         onClose={() => setIsImportOpen(false)}
@@ -594,7 +673,7 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
     "AI engineer with RAG, vector search, Next.js and TypeScript experience",
   );
   const [topK, setTopK] = useState<number | string>(5);
-  const [results, setResults] = useState<SearchResult[]>(initialSearchResults);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   async function handleSearch() {
@@ -655,23 +734,29 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
           </Group>
           <Divider />
           <Stack gap="sm">
-            {results.map((result) => (
-              <Paper key={result.id} withBorder radius="md" p="md">
-                <Group justify="space-between" align="flex-start">
-                  <div>
-                    <Group gap="xs">
-                      <Text fw={600}>{result.title}</Text>
-                      <Badge variant="light">{getSourceTypeLabel(result.sourceType)}</Badge>
-                      <Badge variant="light">chunk {result.chunkIndex + 1}</Badge>
-                    </Group>
-                    <Text size="sm" c="dimmed" mt={6}>
-                      {result.text}
-                    </Text>
-                  </div>
-                  <Code>{result.score.toFixed(2)}</Code>
-                </Group>
-              </Paper>
-            ))}
+            {results.length > 0 ? (
+              results.map((result) => (
+                <Paper key={result.id} withBorder radius="md" p="md">
+                  <Group justify="space-between" align="flex-start">
+                    <div>
+                      <Group gap="xs">
+                        <Text fw={600}>{result.title}</Text>
+                        <Badge variant="light">{getSourceTypeLabel(result.sourceType)}</Badge>
+                        <Badge variant="light">chunk {result.chunkIndex + 1}</Badge>
+                      </Group>
+                      <Text size="sm" c="dimmed" mt={6}>
+                        {result.text}
+                      </Text>
+                    </div>
+                    <Code>{result.score.toFixed(2)}</Code>
+                  </Group>
+                </Paper>
+              ))
+            ) : (
+              <Alert color="blue" variant="light">
+                Import a document, then run semantic search to see retrieved Qdrant chunks here.
+              </Alert>
+            )}
           </Stack>
         </Stack>
       </Card>
@@ -680,13 +765,61 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
 }
 
 function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
-  const [question, setQuestion] = useState("How well does this candidate match the AI Engineer role?");
+  const [question, setQuestion] = useState("What does this document say about RAG and vector search?");
   const [promptVersion, setPromptVersion] = useState<PromptVersion>("rag_strict_v2");
   const [topK, setTopK] = useState<number | string>(5);
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(null);
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [cvTitle, setCvTitle] = useState<string | null>(null);
+  const [jobTitle, setJobTitle] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isScoring, setIsScoring] = useState(false);
+  const cvOptions = useMemo(() => getDocumentOptions(documents, "cv"), [documents]);
+  const jobOptions = useMemo(() => getDocumentOptions(documents, "job"), [documents]);
+  const selectedCvTitle = getSelectedDocumentTitle(cvTitle, cvOptions);
+  const selectedJobTitle = getSelectedDocumentTitle(jobTitle, jobOptions);
+
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
+
+    try {
+      setDocuments(await fetchDocumentInventory());
+    } catch (error) {
+      notifications.show({
+        title: "Document inventory failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchDocumentInventory()
+      .then((nextDocuments) => {
+        if (isActive) {
+          setDocuments(nextDocuments);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          notifications.show({
+            title: "Document inventory failed",
+            message: getErrorMessage(error),
+            color: "red",
+          });
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   async function handleAsk() {
     setIsAsking(true);
@@ -728,11 +861,27 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
   }
 
   async function handleScoreMatch() {
+    if (!selectedCvTitle || !selectedJobTitle) {
+      notifications.show({
+        title: "Match scoring failed",
+        message: "Import or add one CV document and one Job document first.",
+        color: "red",
+      });
+      return;
+    }
+
     setIsScoring(true);
 
     try {
       const response = await fetch("/api/match", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cvTitle: selectedCvTitle,
+          jobTitle: selectedJobTitle,
+        }),
       });
       const payload = (await response.json()) as MatchApiResponse;
 
@@ -774,20 +923,17 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
               label="Prompt"
               onChange={(value) => setPromptVersion((value as PromptVersion | null) ?? "rag_strict_v2")}
               value={promptVersion}
-              data={["rag_v1", "rag_strict_v2", "match_score_v1"]}
+              data={ragPromptOptions}
               w={190}
             />
             <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
             <Button leftSection={<Bot size={16} />} loading={isAsking} onClick={handleAsk}>
               Ask
             </Button>
-            <Button loading={isScoring} onClick={handleScoreMatch} variant="light">
-              Score match
-            </Button>
           </Group>
-          <Alert color="blue" variant="light" title={chatResponse ? "RAG answer" : "Answer preview"}>
+          <Alert color="blue" variant="light" title={chatResponse ? "RAG answer" : "No answer yet"}>
             {chatResponse?.answer ??
-              "Match score: 84/100. The candidate is a strong match for Next.js, TypeScript, Node.js, AI developer tooling, semantic search, and RAG workflows. Sources: Candidate profile chunk 7, AI Engineer role chunk 3."}
+              "Ask a question after indexing documents. The answer will be grounded in retrieved Qdrant chunks."}
           </Alert>
           {chatResponse ? (
             <Group gap="xs">
@@ -802,14 +948,64 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
               </Badge>
             </Group>
           ) : null}
-          {matchResponse ? <MatchScoreResult result={matchResponse} /> : null}
           <JsonInput
             label="Retrieved context"
             autosize
             minRows={7}
-            value={JSON.stringify(chatResponse?.retrievedChunks ?? initialSearchResults, null, 2)}
+            value={JSON.stringify(chatResponse?.retrievedChunks ?? [], null, 2)}
             readOnly
           />
+        </Stack>
+      </Card>
+      <Card withBorder radius="md" padding="lg">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Title order={3} size="h4">
+                CV-job match
+              </Title>
+              <Text size="sm" c="dimmed" mt={4}>
+                Select one indexed CV and one indexed job document from Qdrant.
+              </Text>
+            </div>
+            <Button
+              leftSection={<RefreshCw size={16} />}
+              loading={isLoadingDocuments}
+              onClick={loadDocuments}
+              variant="default"
+            >
+              Refresh documents
+            </Button>
+          </Group>
+          <Group align="flex-end">
+            <Select
+              data={cvOptions}
+              label="CV document"
+              onChange={setCvTitle}
+              placeholder="Import a CV PDF first"
+              searchable
+              value={selectedCvTitle}
+              style={{ flex: 1 }}
+            />
+            <Select
+              data={jobOptions}
+              label="Job document"
+              onChange={setJobTitle}
+              placeholder="Import or add a Job document first"
+              searchable
+              value={selectedJobTitle}
+              style={{ flex: 1 }}
+            />
+            <Button loading={isScoring} onClick={handleScoreMatch} variant="light">
+              Score match
+            </Button>
+          </Group>
+          {cvOptions.length === 0 || jobOptions.length === 0 ? (
+            <Alert color="blue" variant="light">
+              Score match needs at least one indexed CV document and one indexed Job document.
+            </Alert>
+          ) : null}
+          {matchResponse ? <MatchScoreResult result={matchResponse} /> : null}
         </Stack>
       </Card>
     </Stack>
@@ -841,6 +1037,12 @@ function MatchScoreResult({ result }: { result: MatchResponse }) {
           </Table>
         </Table.ScrollContainer>
         <Group gap="xs">
+          <Badge variant="light" color="blue">
+            CV: {result.cvTitle}
+          </Badge>
+          <Badge variant="light" color="cyan">
+            Job: {result.jobTitle}
+          </Badge>
           <Badge variant="light" color="violet">
             {result.model}
           </Badge>
@@ -854,43 +1056,109 @@ function MatchScoreResult({ result }: { result: MatchResponse }) {
 }
 
 function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
-  const [evalRuns, setEvalRuns] = useState<EvalRun[]>(initialEvalRuns);
+  const [targetTitle, setTargetTitle] = useState<string | null>(null);
+  const [sourceType, setSourceType] = useState<SourceType>("cv");
+  const [queries, setQueries] = useState(
+    "RAG and vector search experience\nTypeScript and Node.js experience\nAI evaluation pipelines",
+  );
+  const [topK, setTopK] = useState<number | string>(5);
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [run, setRun] = useState<QuickEvalRun | null>(null);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [lastRunSummary, setLastRunSummary] = useState<string | null>(null);
+  const documentOptions = useMemo(
+    () => getDocumentOptions(documents, sourceType),
+    [documents, sourceType],
+  );
+  const selectedTargetTitle = getSelectedDocumentTitle(targetTitle, documentOptions);
 
-  async function handleRunEvals() {
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
+
+    try {
+      setDocuments(await fetchDocumentInventory());
+    } catch (error) {
+      notifications.show({
+        title: "Document inventory failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchDocumentInventory()
+      .then((nextDocuments) => {
+        if (isActive) {
+          setDocuments(nextDocuments);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          notifications.show({
+            title: "Document inventory failed",
+            message: getErrorMessage(error),
+            color: "red",
+          });
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function handleRunPdfEvals() {
+    const expectedTitle = selectedTargetTitle?.trim() ?? "";
+    const queryList = queries
+      .split("\n")
+      .map((query) => query.trim())
+      .filter(Boolean);
+
+    if (!expectedTitle || queryList.length === 0) {
+      notifications.show({
+        title: "PDF eval failed",
+        message: "Provide the imported document title and at least one query.",
+        color: "red",
+      });
+      return;
+    }
+
     setIsRunning(true);
 
     try {
-      const response = await fetch("/api/evals/run", {
+      const response = await fetch("/api/evals/quick", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           embeddingProfile,
-          promptVersions: ["rag_v1", "rag_strict_v2"],
-          topK: 5,
+          targetTitle: expectedTitle,
+          sourceType,
+          queries: queryList,
+          topK: getNumericTopK(topK),
         }),
       });
-      const payload = (await response.json()) as EvalRunResponse;
+      const payload = (await response.json()) as QuickEvalRunResponse;
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Could not run evals.");
+        throw new Error(payload.error ?? "Could not run PDF evals.");
       }
 
-      setEvalRuns(payload.runs);
-      setLastRunSummary(
-        `${payload.runs.length} prompt variants evaluated with ${payload.model} (${payload.dimensions}d)`,
-      );
+      setRun(payload.run);
       notifications.show({
-        title: "Eval run complete",
-        message: `${payload.runs[0]?.cases.length ?? 0} golden-set cases evaluated`,
+        title: "PDF eval complete",
+        message: `${payload.run.cases.length} queries checked against ${expectedTitle}`,
         color: "green",
       });
     } catch (error) {
       notifications.show({
-        title: "Eval run failed",
+        title: "PDF eval failed",
         message: getErrorMessage(error),
         color: "red",
       });
@@ -899,115 +1167,120 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
     }
   }
 
-  const caseRows = evalRuns[0]?.cases ?? [];
-
   return (
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group justify="space-between">
-            <Title order={3} size="h4">
-              Prompt comparison
-            </Title>
-            <Button leftSection={<Play size={16} />} loading={isRunning} onClick={handleRunEvals}>
-              Run evals
-            </Button>
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Group gap="xs">
+                <Search size={18} />
+                <Title order={3} size="h4">
+                  PDF retrieval evals
+                </Title>
+              </Group>
+              <Text size="sm" c="dimmed" mt={4}>
+                Checks whether each query retrieves the selected document in TopK.
+              </Text>
+            </div>
+            <Group>
+              <Button
+                leftSection={<RefreshCw size={16} />}
+                loading={isLoadingDocuments}
+                onClick={loadDocuments}
+                variant="default"
+              >
+                Refresh documents
+              </Button>
+              <Button leftSection={<Play size={16} />} loading={isRunning} onClick={handleRunPdfEvals}>
+                Run evals
+              </Button>
+            </Group>
           </Group>
-          {lastRunSummary ? (
-            <Alert color="green" variant="light">
-              {lastRunSummary}
-            </Alert>
+          <Group align="flex-end">
+            <Select
+              data={documentOptions}
+              label="Expected document"
+              onChange={setTargetTitle}
+              placeholder="Choose indexed document"
+              searchable
+              value={selectedTargetTitle}
+              style={{ flex: 1 }}
+            />
+            <Select
+              data={sourceTypeSelectData}
+              label="Source type"
+              onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
+              value={sourceType}
+              w={160}
+            />
+            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+          </Group>
+          <Textarea
+            label="Queries"
+            autosize
+            minRows={3}
+            onChange={(event) => setQueries(event.currentTarget.value)}
+            value={queries}
+          />
+          {run ? (
+            <Stack gap="md">
+              <Group gap="xs">
+                <Badge variant="light" color="violet">
+                  {run.model}
+                </Badge>
+                <Badge variant="light" color="blue">
+                  Recall@K {run.recallAtK.toFixed(2)}
+                </Badge>
+                <Badge variant="light" color="teal">
+                  MRR {run.mrr.toFixed(2)}
+                </Badge>
+                <Badge variant="light" color={run.passRate >= 80 ? "green" : "yellow"}>
+                  Pass rate {Math.round(run.passRate)}%
+                </Badge>
+                <Badge variant="light" color="gray">
+                  {formatLatency(run.averageLatencyMs)}
+                </Badge>
+              </Group>
+              <Progress value={run.passRate} color={run.passRate >= 80 ? "green" : "yellow"} />
+              <Table.ScrollContainer minWidth={760}>
+                <Table verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Query</Table.Th>
+                      <Table.Th>Expected title</Table.Th>
+                      <Table.Th>Retrieved titles</Table.Th>
+                      <Table.Th>Rank</Table.Th>
+                      <Table.Th>Latency</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {run.cases.map((row) => (
+                      <Table.Tr key={row.id}>
+                        <Table.Td>{row.query}</Table.Td>
+                        <Table.Td>{row.expectedTitle}</Table.Td>
+                        <Table.Td>
+                          <Text size="sm" lineClamp={2}>
+                            {row.retrievedTitles.join(", ")}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={row.foundExpected ? "green" : "red"} variant="light">
+                            {row.firstRelevantRank ? `#${row.firstRelevantRank}` : "miss"}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>{formatLatency(row.latencyMs)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Stack>
           ) : (
             <Alert color="blue" variant="light">
-              Evals use the current embedding profile and expect the Qdrant collection to be seeded
-              with the same profile.
+              Import a searchable PDF or add a document, choose it here, then run one query per line.
             </Alert>
           )}
-          <Table.ScrollContainer minWidth={640}>
-            <Table verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Prompt</Table.Th>
-                  <Table.Th>Recall@5</Table.Th>
-                  <Table.Th>MRR</Table.Th>
-                  <Table.Th>Latency</Table.Th>
-                  <Table.Th>Pass rate</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {evalRuns.map((row) => (
-                  <Table.Tr key={row.id}>
-                    <Table.Td>
-                      <Code>{row.promptVersion}</Code>
-                    </Table.Td>
-                    <Table.Td>{row.recallAt5.toFixed(2)}</Table.Td>
-                    <Table.Td>{row.mrr.toFixed(2)}</Table.Td>
-                    <Table.Td>{formatLatency(row.averageLatencyMs)}</Table.Td>
-                    <Table.Td>
-                      <Group gap="sm">
-                        <Progress value={row.passRate} w={110} />
-                        <Text size="sm">{Math.round(row.passRate)}%</Text>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Card>
-      <Card withBorder radius="md" padding="lg">
-        <Stack gap="md">
-          <Group gap="xs">
-            <ListChecks size={18} />
-            <Title order={3} size="h4">
-              Golden-set cases
-            </Title>
-          </Group>
-          <Table.ScrollContainer minWidth={760}>
-            <Table verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Case</Table.Th>
-                  <Table.Th>Expected</Table.Th>
-                  <Table.Th>Retrieved</Table.Th>
-                  <Table.Th>Rank</Table.Th>
-                  <Table.Th>Latency</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {caseRows.length > 0 ? (
-                  caseRows.map((row) => (
-                    <Table.Tr key={row.id}>
-                      <Table.Td>{row.id}</Table.Td>
-                      <Table.Td>
-                        <Code>{row.expectedChunkIds.join(", ")}</Code>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" lineClamp={2}>
-                          {row.retrievedChunkIds.join(", ")}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={row.foundExpected ? "green" : "red"} variant="light">
-                          {row.firstRelevantRank ? `#${row.firstRelevantRank}` : "miss"}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>{formatLatency(row.latencyMs)}</Table.Td>
-                    </Table.Tr>
-                  ))
-                ) : (
-                  <Table.Tr>
-                    <Table.Td colSpan={5}>
-                      <Text c="dimmed" size="sm">
-                        Run evals to inspect retrieval results for each golden-set case.
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
         </Stack>
       </Card>
     </Stack>
@@ -1040,11 +1313,56 @@ function getSourceTypeLabel(sourceType: SourceType) {
   return labels[sourceType];
 }
 
+function getDocumentOptions(documents: IndexedDocument[], sourceType: SourceType) {
+  return documents
+    .filter((document) => document.sourceType === sourceType)
+    .map((document) => ({
+      value: document.title,
+      label: `${document.title} (${document.chunks} chunks)`,
+    }));
+}
+
+function getSelectedDocumentTitle(
+  title: string | null,
+  options: Array<{ value: string; label: string }>,
+) {
+  if (title && options.some((option) => option.value === title)) {
+    return title;
+  }
+
+  return options[0]?.value ?? null;
+}
+
+async function fetchDocumentInventory() {
+  const response = await fetch("/api/documents");
+  const payload = (await response.json()) as DocumentsResponse;
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not load indexed documents.");
+  }
+
+  return payload.documents;
+}
+
 function getTitleFromFilename(filename: string) {
   return filename.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ").trim();
 }
 
-type IngestResponse = {
+function createManualDocumentId(title: string, sourceType: SourceType) {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `manual-${sourceType}-${slug || "document"}-${Date.now()}`;
+}
+
+type DocumentsResponse = {
+  documents: IndexedDocument[];
+  error?: string;
+};
+
+type TextIngestResponse = {
   documents: number;
   chunks: number;
   upserted: number;
@@ -1093,12 +1411,12 @@ type MatchApiResponse = MatchResponse & {
   error?: string;
 };
 
-type EvalRunResponse = {
+type QuickEvalRunResponse = {
   embeddingProfile: EmbeddingProfileId;
   model: string;
   dimensions: number;
   topK: number;
-  runs: EvalRun[];
+  run: QuickEvalRun;
   error?: string;
 };
 

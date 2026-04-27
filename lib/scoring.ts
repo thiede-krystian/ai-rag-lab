@@ -1,16 +1,16 @@
 import type { MatchResponse } from "@/lib/types";
 
-const fallbackMatchResponse: MatchResponse = {
+type ParsedMatchResponse = Omit<MatchResponse, "cvTitle" | "jobTitle" | "model" | "latencyMs">;
+
+const fallbackMatchResponse: ParsedMatchResponse = {
   score: 0,
   summary: "The model response could not be parsed into the expected scoring shape.",
   strengths: [],
   gaps: ["Check the raw model response and prompt constraints."],
   evidence: [],
-  model: "",
-  latencyMs: 0,
 };
 
-export function parseMatchResponse(content: string): Omit<MatchResponse, "model" | "latencyMs"> {
+export function parseMatchResponse(content: string): ParsedMatchResponse {
   try {
     const parsed = JSON.parse(extractJson(content)) as Partial<MatchResponse>;
 

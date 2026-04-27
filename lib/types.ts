@@ -22,6 +22,13 @@ export type ChunkRecord = {
   tags: string[];
 };
 
+export type IndexedDocument = {
+  title: string;
+  sourceType: SourceType;
+  chunks: number;
+  tags: string[];
+};
+
 export type SearchRequest = {
   query: string;
   topK: number;
@@ -55,6 +62,8 @@ export type ChatResponse = {
 };
 
 export type MatchResponse = {
+  cvTitle: string;
+  jobTitle: string;
   score: number;
   summary: string;
   strengths: string[];
@@ -64,29 +73,23 @@ export type MatchResponse = {
   latencyMs: number;
 };
 
-export type EvalRun = {
+export type QuickEvalRun = {
   id: string;
-  promptVersion: PromptVersion;
+  targetTitle: string;
+  sourceType?: SourceType;
   model: string;
-  recallAt5: number;
+  recallAtK: number;
   mrr: number;
   averageLatencyMs: number;
   passRate: number;
-  cases: EvalCaseResult[];
+  cases: QuickEvalCaseResult[];
 };
 
-export type EvalCase = {
+export type QuickEvalCaseResult = {
   id: string;
   query: string;
-  expectedChunkIds: string[];
-  expectedSourceType?: SourceType;
-};
-
-export type EvalCaseResult = {
-  id: string;
-  query: string;
-  expectedChunkIds: string[];
-  retrievedChunkIds: string[];
+  expectedTitle: string;
+  retrievedTitles: string[];
   foundExpected: boolean;
   firstRelevantRank: number | null;
   reciprocalRank: number;

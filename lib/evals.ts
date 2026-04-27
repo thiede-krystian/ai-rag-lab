@@ -1,25 +1,35 @@
-import type { EvalCase, EvalCaseResult, EvalRun, PromptVersion, SearchResult } from "@/lib/types";
+import type {
+  QuickEvalCaseResult,
+  QuickEvalRun,
+  SearchResult,
+  SourceType,
+} from "@/lib/types";
 
-export function evaluateRetrievedChunks({
-  evalCase,
+export function evaluateTargetTitleRetrieval({
+  id,
+  query,
+  expectedTitle,
   results,
   latencyMs,
 }: {
-  evalCase: EvalCase;
+  id: string;
+  query: string;
+  expectedTitle: string;
   results: SearchResult[];
   latencyMs: number;
-}): EvalCaseResult {
-  const retrievedChunkIds = results.map((result) => result.id);
-  const firstRelevantIndex = retrievedChunkIds.findIndex((id) =>
-    evalCase.expectedChunkIds.includes(id),
+}): QuickEvalCaseResult {
+  const normalizedExpectedTitle = normalizeTitle(expectedTitle);
+  const retrievedTitles = results.map((result) => result.title);
+  const firstRelevantIndex = retrievedTitles.findIndex(
+    (title) => normalizeTitle(title) === normalizedExpectedTitle,
   );
   const firstRelevantRank = firstRelevantIndex === -1 ? null : firstRelevantIndex + 1;
 
   return {
-    id: evalCase.id,
-    query: evalCase.query,
-    expectedChunkIds: evalCase.expectedChunkIds,
-    retrievedChunkIds,
+    id,
+    query,
+    expectedTitle,
+    retrievedTitles,
     foundExpected: firstRelevantRank !== null,
     firstRelevantRank,
     reciprocalRank: firstRelevantRank ? 1 / firstRelevantRank : 0,
@@ -27,25 +37,32 @@ export function evaluateRetrievedChunks({
   };
 }
 
-export function summarizeEvalRun({
+export function summarizeQuickEvalRun({
   cases,
-  promptVersion,
+  targetTitle,
+  sourceType,
   model,
 }: {
-  cases: EvalCaseResult[];
-  promptVersion: PromptVersion;
+  cases: QuickEvalCaseResult[];
+  targetTitle: string;
+  sourceType?: SourceType;
   model: string;
-}): EvalRun {
+}): QuickEvalRun {
   return {
-    id: `${promptVersion}-${Date.now()}`,
-    promptVersion,
+    id: `quick-${Date.now()}`,
+    targetTitle,
+    sourceType,
     model,
-    recallAt5: average(cases.map((result) => (result.foundExpected ? 1 : 0))),
+    recallAtK: average(cases.map((result) => (result.foundExpected ? 1 : 0))),
     mrr: average(cases.map((result) => result.reciprocalRank)),
     averageLatencyMs: average(cases.map((result) => result.latencyMs)),
     passRate: average(cases.map((result) => (result.foundExpected ? 100 : 0))),
     cases,
   };
+}
+
+function normalizeTitle(title: string) {
+  return title.trim().toLowerCase();
 }
 
 function average(values: number[]) {

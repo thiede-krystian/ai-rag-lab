@@ -3,7 +3,6 @@ import { z } from "zod";
 import { createEmbeddings } from "@/lib/ai/embeddings";
 import { chunkDocuments } from "@/lib/chunking";
 import { getEmbeddingProfile } from "@/lib/embedding-profiles";
-import { seedDocuments } from "@/lib/seed-documents";
 import { resetDocumentCollection, upsertChunks } from "@/lib/qdrant";
 import type { DocumentInput } from "@/lib/types";
 
@@ -19,22 +18,22 @@ const documentSchema = z.object({
 
 const ingestRequestSchema = z
   .object({
-    documents: z.array(documentSchema).optional(),
+    documents: z.array(documentSchema).min(1),
     embeddingProfile: z.enum(["balanced", "large"]).optional(),
     resetCollection: z.boolean().optional(),
   })
-  .optional();
+  .strict();
 
 export async function POST(request: Request) {
   try {
     const body = await parseOptionalJson(request);
     const parsed = ingestRequestSchema.parse(body);
-    const documents = (parsed?.documents ?? seedDocuments) as DocumentInput[];
-    const profile = getEmbeddingProfile(parsed?.embeddingProfile);
+    const documents = parsed.documents as DocumentInput[];
+    const profile = getEmbeddingProfile(parsed.embeddingProfile);
     const chunks = chunkDocuments(documents);
     const vectors = await createEmbeddings(chunks.map((chunk) => chunk.text), profile.id);
 
-    if (parsed?.resetCollection) {
+    if (parsed.resetCollection) {
       await resetDocumentCollection(profile.dimensions);
     }
 

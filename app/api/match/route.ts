@@ -1,31 +1,52 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createChatCompletion } from "@/lib/ai/chat";
 import { buildMatchScoreMessages } from "@/lib/prompts";
+import { getDocumentChunks } from "@/lib/qdrant";
 import { parseMatchResponse } from "@/lib/scoring";
-import { seedDocuments } from "@/lib/seed-documents";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+const matchRequestSchema = z.object({
+  cvTitle: z.string().trim().min(1),
+  jobTitle: z.string().trim().min(1),
+});
+
+export async function POST(request: Request) {
   const startedAt = Date.now();
 
   try {
-    const candidateProfile = seedDocuments.find((document) => document.sourceType === "cv");
-    const jobOffer = seedDocuments.find((document) => document.sourceType === "job");
+    const input = matchRequestSchema.parse(await request.json());
+    const [candidateChunks, jobChunks] = await Promise.all([
+      getDocumentChunks({
+        title: input.cvTitle,
+        sourceType: "cv",
+      }),
+      getDocumentChunks({
+        title: input.jobTitle,
+        sourceType: "job",
+      }),
+    ]);
 
-    if (!candidateProfile || !jobOffer) {
-      throw new Error("Seed corpus must include one CV document and one job document.");
+    if (candidateChunks.length === 0) {
+      throw new MatchRequestError(`No indexed CV document found for title "${input.cvTitle}".`);
+    }
+
+    if (jobChunks.length === 0) {
+      throw new MatchRequestError(`No indexed job document found for title "${input.jobTitle}".`);
     }
 
     const completion = await createChatCompletion(
       buildMatchScoreMessages({
-        candidateProfile: candidateProfile.content,
-        jobOffer: jobOffer.content,
+        candidateProfile: joinChunkText(candidateChunks),
+        jobOffer: joinChunkText(jobChunks),
       }),
     );
     const parsed = parseMatchResponse(completion.content);
 
     return NextResponse.json({
+      cvTitle: input.cvTitle,
+      jobTitle: input.jobTitle,
       ...parsed,
       model: completion.model,
       latencyMs: Date.now() - startedAt,
@@ -35,13 +56,28 @@ export async function POST() {
   }
 }
 
+function joinChunkText(chunks: Array<{ text: string }>) {
+  return chunks.map((chunk) => chunk.text).join("\n\n");
+}
+
+class MatchRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status = 400,
+  ) {
+    super(message);
+  }
+}
+
 function jsonError(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown match scoring error";
+  const status =
+    error instanceof MatchRequestError ? error.status : error instanceof z.ZodError ? 400 : 500;
 
   return NextResponse.json(
     {
       error: message,
     },
-    { status: 500 },
+    { status },
   );
 }

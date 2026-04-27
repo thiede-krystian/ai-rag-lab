@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { qdrantConfig } from "@/lib/config";
-import type { ChunkRecord, SearchRequest, SearchResult, SourceType } from "@/lib/types";
+import type {
+  ChunkRecord,
+  IndexedDocument,
+  SearchRequest,
+  SearchResult,
+  SourceType,
+} from "@/lib/types";
 
-type QdrantPayload = {
+export type QdrantPayload = {
   chunkId: string;
   documentId: string;
   title: string;
@@ -50,7 +56,7 @@ export async function ensureDocumentCollection(vectorSize: number) {
 
     if (existingVectorSize && existingVectorSize !== vectorSize) {
       throw new Error(
-        `Qdrant collection uses ${existingVectorSize}-dimensional vectors, but the selected embedding profile produced ${vectorSize}. Reset the collection before seeding this profile.`,
+        `Qdrant collection uses ${existingVectorSize}-dimensional vectors, but the selected embedding profile produced ${vectorSize}. Reset the collection before importing documents with this profile.`,
       );
     }
   }
@@ -98,6 +104,7 @@ async function ensurePayloadIndexes() {
     createPayloadIndexIfMissing("sourceType"),
     createPayloadIndexIfMissing("tags"),
     createPayloadIndexIfMissing("documentId"),
+    createPayloadIndexIfMissing("title"),
   ]);
 }
 
@@ -161,6 +168,86 @@ export async function searchChunks({
   return results.map((result) => toSearchResult(result));
 }
 
+export async function listIndexedDocuments() {
+  if (!(await collectionExists())) {
+    return [];
+  }
+
+  await ensurePayloadIndexes();
+
+  const payloads = await scrollPayloads();
+
+  return groupDocumentPayloads(payloads);
+}
+
+export async function getDocumentChunks({
+  title,
+  sourceType,
+}: {
+  title: string;
+  sourceType: SourceType;
+}) {
+  if (!(await collectionExists())) {
+    return [];
+  }
+
+  await ensurePayloadIndexes();
+
+  const payloads = await scrollPayloads(buildDocumentFilter({ title, sourceType }));
+
+  return payloads
+    .map(toChunkRecord)
+    .filter((chunk): chunk is ChunkRecord => Boolean(chunk))
+    .sort((left, right) => left.chunkIndex - right.chunkIndex);
+}
+
+export function groupDocumentPayloads(payloads: Array<Partial<QdrantPayload>>): IndexedDocument[] {
+  const documents = new Map<string, IndexedDocument>();
+
+  for (const payload of payloads) {
+    if (!payload.title || !payload.sourceType) {
+      continue;
+    }
+
+    const key = `${payload.sourceType}\u0000${payload.title}`;
+    const current = documents.get(key);
+    const tags = [...new Set([...(current?.tags ?? []), ...(payload.tags ?? [])])].sort();
+
+    documents.set(key, {
+      title: payload.title,
+      sourceType: payload.sourceType,
+      chunks: (current?.chunks ?? 0) + 1,
+      tags,
+    });
+  }
+
+  return [...documents.values()].sort((left, right) => {
+    const typeOrder = left.sourceType.localeCompare(right.sourceType);
+
+    return typeOrder === 0 ? left.title.localeCompare(right.title) : typeOrder;
+  });
+}
+
+async function scrollPayloads(filter?: ReturnType<typeof buildDocumentFilter>) {
+  const payloads: Array<Partial<QdrantPayload>> = [];
+  let offset: string | number | Record<string, unknown> | null | undefined;
+
+  do {
+    const page = await getQdrantClient().scroll(qdrantConfig.collection, {
+      filter,
+      limit: 100,
+      offset,
+      with_payload: true,
+      with_vector: false,
+    });
+
+    payloads.push(...page.points.map((point) => parsePayload(point.payload)));
+    offset = page.next_page_offset;
+  } while (offset);
+
+  return payloads;
+}
+
 function toPayload(chunk: ChunkRecord): QdrantPayload {
   return {
     chunkId: chunk.id,
@@ -170,6 +257,29 @@ function toPayload(chunk: ChunkRecord): QdrantPayload {
     chunkIndex: chunk.chunkIndex,
     sourceType: chunk.sourceType,
     tags: chunk.tags,
+  };
+}
+
+function toChunkRecord(payload: Partial<QdrantPayload>): ChunkRecord | null {
+  if (
+    !payload.chunkId ||
+    !payload.documentId ||
+    !payload.title ||
+    !payload.text ||
+    !payload.sourceType ||
+    typeof payload.chunkIndex !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    id: payload.chunkId,
+    documentId: payload.documentId,
+    title: payload.title,
+    text: payload.text,
+    chunkIndex: payload.chunkIndex,
+    sourceType: payload.sourceType,
+    tags: payload.tags ?? [],
   };
 }
 
@@ -200,6 +310,21 @@ function buildFilter(filters: SearchRequest["filters"] | undefined) {
   };
 }
 
+function buildDocumentFilter({ title, sourceType }: { title: string; sourceType: SourceType }) {
+  return {
+    must: [
+      {
+        key: "sourceType",
+        match: { value: sourceType },
+      },
+      {
+        key: "title",
+        match: { value: title },
+      },
+    ],
+  };
+}
+
 function toSearchResult(result: {
   id: string | number;
   score: number;
@@ -220,10 +345,12 @@ function toSearchResult(result: {
 function parsePayload(payload: Record<string, unknown> | null | undefined) {
   return {
     chunkId: getString(payload?.chunkId),
+    documentId: getString(payload?.documentId),
     title: getString(payload?.title),
     text: getString(payload?.text),
     sourceType: getSourceType(payload?.sourceType),
     chunkIndex: getNumber(payload?.chunkIndex),
+    tags: getStringArray(payload?.tags),
   };
 }
 
@@ -233,6 +360,10 @@ function getString(value: unknown) {
 
 function getNumber(value: unknown) {
   return typeof value === "number" ? value : undefined;
+}
+
+function getStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function getSourceType(value: unknown): SourceType | undefined {
