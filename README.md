@@ -29,10 +29,11 @@ docker compose up -d
 ## Milestones
 
 1. UI scaffold with Mantine
-2. Domain types, seed data, chunking, unit tests
+2. Domain types, chunking, unit tests
 3. Qdrant collection, OpenRouter embeddings, ingestion, search
 4. OpenRouter RAG chat and CV-job match scoring
-5. Eval runner and dashboard
+5. Searchable PDF import and manual text documents with append/replace modes
+6. Qdrant document inventory and PDF retrieval evals
 
 ## Embedding Profiles
 
@@ -41,4 +42,64 @@ docker compose up -d
 
 Changing profiles requires a Qdrant collection reset because vector dimensions
 must match the collection configuration. The app exposes a reset action in the
-Documents tab and also resets before seed ingestion.
+Documents tab and `Replace all` resets before importing a PDF or text document.
+
+## Text Documents
+
+The Documents tab supports adding one text document at a time through `Add text`.
+Use it for a pasted CV, job offer, or knowledge note while the future WYSIWYG
+editor is still out of scope.
+
+Manual text documents use the same `/api/ingest` pipeline as future editor
+content: chunking, OpenRouter embeddings, and Qdrant upsert.
+
+## PDF Import
+
+The Documents tab supports importing searchable PDFs, such as a text-based CV.
+Scanned PDFs are intentionally out of scope for v1 because they require OCR.
+
+Import modes:
+
+- `Append`: adds the imported PDF chunks to the current Qdrant collection.
+- `Replace all`: resets the Qdrant collection for the selected embedding profile,
+  then imports only the selected PDF.
+
+Manual check:
+
+1. Start Qdrant with `docker compose up -d`.
+2. Start the app with `pnpm dev`.
+3. Open `http://localhost:3000` and go to Documents.
+4. Click Add text for pasted content or Import PDF for a searchable PDF.
+5. Choose source type (`cv`, `job`, or `knowledge`), tags, embedding profile,
+   and Append or Replace all.
+6. Search for a skill or phrase from the document in Semantic Search.
+7. In Evals, choose the imported document and run retrieval evals.
+
+## RAG Chat And Scoring
+
+RAG Chat uses the current Qdrant collection, so it can answer questions based on
+an imported PDF after the document is indexed.
+
+Score match uses the current Qdrant collection too. Import or add one document
+as `cv` and one as `job`, then choose both titles in the RAG Chat tab. The API
+loads matching chunks by `sourceType + title`, joins them in chunk order, and
+sends the existing scoring prompt to OpenRouter.
+
+The generic `/api/ingest` endpoint remains available for future WYSIWYG import
+flows. It requires an explicit `documents` array and no longer indexes fallback
+demo data.
+
+## Evals
+
+The Evals tab is focused on imported or explicitly added documents. Choose the
+expected document title, source type, TopK, and one query per line. The app
+reports whether each query retrieved the expected document title in TopK, plus
+Recall@K, MRR, latency, and pass rate.
+
+Automated checks:
+
+```bash
+pnpm lint
+pnpm test
+pnpm build
+```
