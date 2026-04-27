@@ -26,6 +26,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
+import { useMounted } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   Bot,
@@ -199,11 +200,13 @@ export function RagLabShell() {
 
 function ColorSchemeToggle() {
   const { setColorScheme } = useMantineColorScheme();
+  const isMounted = useMounted();
   const computedColorScheme = useComputedColorScheme("light", {
     getInitialValueInEffect: true,
   });
-  const nextColorScheme = computedColorScheme === "light" ? "dark" : "light";
-  const Icon = computedColorScheme === "light" ? Moon : Sun;
+  const visibleColorScheme = isMounted ? computedColorScheme : "light";
+  const nextColorScheme = visibleColorScheme === "light" ? "dark" : "light";
+  const Icon = visibleColorScheme === "light" ? Moon : Sun;
 
   return (
     <Tooltip label={`Switch to ${nextColorScheme} mode`}>
