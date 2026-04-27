@@ -26,6 +26,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   Bot,
   Database,
@@ -38,9 +39,10 @@ import {
   Sun,
   UploadCloud,
 } from "lucide-react";
+import { useState } from "react";
 import { chunkDocuments, createDocumentId } from "@/lib/chunking";
 import { seedDocuments } from "@/lib/seed-documents";
-import type { SourceType } from "@/lib/types";
+import type { SearchResult, SourceType } from "@/lib/types";
 
 const seedChunks = chunkDocuments(seedDocuments);
 const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
@@ -53,18 +55,22 @@ const indexedDocuments = seedDocuments.map((document, index) => ({
   status: "Seeded",
 }));
 
-const searchResults = [
+const initialSearchResults: SearchResult[] = [
   {
+    id: candidateChunk?.id ?? "candidate-profile-chunk-1",
     title: candidateChunk?.title ?? "Candidate profile",
-    chunk: (candidateChunk?.chunkIndex ?? 0) + 1,
+    chunkIndex: candidateChunk?.chunkIndex ?? 0,
+    sourceType: candidateChunk?.sourceType ?? "cv",
     score: 0.91,
     text:
       candidateChunk?.text ??
       "Daily work with Next.js, Node.js, TypeScript, AI coding tools, and LLM-driven product workflows.",
   },
   {
+    id: roleChunk?.id ?? "ai-engineer-role-chunk-1",
     title: roleChunk?.title ?? "AI Engineer role",
-    chunk: (roleChunk?.chunkIndex ?? 0) + 1,
+    chunkIndex: roleChunk?.chunkIndex ?? 0,
+    sourceType: roleChunk?.sourceType ?? "job",
     score: 0.87,
     text:
       roleChunk?.text ??
@@ -90,7 +96,7 @@ export function RagLabShell() {
                   AI RAG Lab
                 </Title>
                 <Text size="sm" c="dimmed">
-                  Next.js, Node.js, Mantine, Qdrant, OpenAI, OpenRouter
+                  Next.js, Node.js, Mantine, Qdrant, OpenRouter
                 </Text>
               </div>
             </Group>
@@ -99,7 +105,7 @@ export function RagLabShell() {
                 Local Qdrant
               </Badge>
               <Badge variant="light" color="blue">
-                OpenAI embeddings
+                OpenRouter embeddings
               </Badge>
               <Badge variant="light" color="violet">
                 OpenRouter chat
@@ -170,6 +176,40 @@ function ColorSchemeToggle() {
 }
 
 function DocumentsPanel() {
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestSummary, setIngestSummary] = useState<string | null>(null);
+
+  async function handleSeedDocuments() {
+    setIsIngesting(true);
+
+    try {
+      const response = await fetch("/api/ingest", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as IngestResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not ingest seed documents.");
+      }
+
+      const summary = `${payload.upserted} chunks indexed from ${payload.documents} documents`;
+      setIngestSummary(summary);
+      notifications.show({
+        title: "Seed corpus indexed",
+        message: summary,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Ingestion failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsIngesting(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group align="stretch" grow>
@@ -185,12 +225,24 @@ function DocumentsPanel() {
               Corpus
             </Title>
             <Group>
-              <Button leftSection={<Sparkles size={16} />} variant="light">
+              <Button
+                leftSection={<Sparkles size={16} />}
+                loading={isIngesting}
+                onClick={handleSeedDocuments}
+                variant="light"
+              >
                 Seed documents
               </Button>
-              <Button leftSection={<UploadCloud size={16} />}>Import text</Button>
+              <Button disabled leftSection={<UploadCloud size={16} />}>
+                Import text
+              </Button>
             </Group>
           </Group>
+          {ingestSummary ? (
+            <Alert color="green" variant="light">
+              {ingestSummary}
+            </Alert>
+          ) : null}
           <Table.ScrollContainer minWidth={640}>
             <Table verticalSpacing="sm">
               <Table.Thead>
@@ -226,6 +278,50 @@ function DocumentsPanel() {
 }
 
 function SearchPanel() {
+  const [query, setQuery] = useState(
+    "AI engineer with RAG, vector search, Next.js and TypeScript experience",
+  );
+  const [topK, setTopK] = useState<number | string>(5);
+  const [results, setResults] = useState<SearchResult[]>(initialSearchResults);
+  const [isSearching, setIsSearching] = useState(false);
+
+  async function handleSearch() {
+    setIsSearching(true);
+
+    try {
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          topK: getNumericTopK(topK),
+        }),
+      });
+      const payload = (await response.json()) as SearchResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not search indexed documents.");
+      }
+
+      setResults(payload.results);
+      notifications.show({
+        title: "Search complete",
+        message: `${payload.results.length} chunks returned from Qdrant`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Search failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
@@ -235,21 +331,25 @@ function SearchPanel() {
               label="Query"
               autosize
               minRows={2}
-              defaultValue="AI engineer with RAG, vector search, Next.js and TypeScript experience"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              value={query}
               style={{ flex: 1 }}
             />
-            <NumberInput label="TopK" defaultValue={5} min={1} max={20} w={110} />
-            <Button leftSection={<Search size={16} />}>Search</Button>
+            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+            <Button leftSection={<Search size={16} />} loading={isSearching} onClick={handleSearch}>
+              Search
+            </Button>
           </Group>
           <Divider />
           <Stack gap="sm">
-            {searchResults.map((result) => (
-              <Paper key={`${result.title}-${result.chunk}`} withBorder radius="md" p="md">
+            {results.map((result) => (
+              <Paper key={result.id} withBorder radius="md" p="md">
                 <Group justify="space-between" align="flex-start">
                   <div>
                     <Group gap="xs">
                       <Text fw={600}>{result.title}</Text>
-                      <Badge variant="light">chunk {result.chunk}</Badge>
+                      <Badge variant="light">{getSourceTypeLabel(result.sourceType)}</Badge>
+                      <Badge variant="light">chunk {result.chunkIndex + 1}</Badge>
                     </Group>
                     <Text size="sm" c="dimmed" mt={6}>
                       {result.text}
@@ -297,7 +397,7 @@ function ChatPanel() {
             label="Retrieved context"
             autosize
             minRows={7}
-            value={JSON.stringify(searchResults, null, 2)}
+            value={JSON.stringify(initialSearchResults, null, 2)}
             readOnly
           />
         </Stack>
@@ -378,4 +478,30 @@ function getSourceTypeLabel(sourceType: SourceType) {
   };
 
   return labels[sourceType];
+}
+
+type IngestResponse = {
+  documents: number;
+  chunks: number;
+  upserted: number;
+  error?: string;
+};
+
+type SearchResponse = {
+  results: SearchResult[];
+  error?: string;
+};
+
+function getNumericTopK(value: number | string) {
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return 5;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), 1), 20);
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
 }
