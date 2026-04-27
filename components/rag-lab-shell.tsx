@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ActionIcon,
   Alert,
   AppShell,
   Badge,
@@ -21,15 +22,20 @@ import {
   Text,
   Textarea,
   Title,
+  Tooltip,
+  useComputedColorScheme,
+  useMantineColorScheme,
 } from "@mantine/core";
 import {
   Bot,
   Database,
   FileText,
   Gauge,
+  Moon,
   Play,
   Search,
   Sparkles,
+  Sun,
   UploadCloud,
 } from "lucide-react";
 
@@ -76,7 +82,7 @@ export function RagLabShell() {
                 </Text>
               </div>
             </Group>
-            <Group gap="xs">
+            <Group gap="xs" visibleFrom="sm">
               <Badge variant="light" color="teal">
                 Local Qdrant
               </Badge>
@@ -87,6 +93,7 @@ export function RagLabShell() {
                 OpenRouter chat
               </Badge>
             </Group>
+            <ColorSchemeToggle />
           </Group>
         </Container>
       </AppShell.Header>
@@ -125,6 +132,28 @@ export function RagLabShell() {
         </Container>
       </AppShell.Main>
     </AppShell>
+  );
+}
+
+function ColorSchemeToggle() {
+  const { setColorScheme } = useMantineColorScheme();
+  const computedColorScheme = useComputedColorScheme("light", {
+    getInitialValueInEffect: true,
+  });
+  const nextColorScheme = computedColorScheme === "light" ? "dark" : "light";
+  const Icon = computedColorScheme === "light" ? Moon : Sun;
+
+  return (
+    <Tooltip label={`Switch to ${nextColorScheme} mode`}>
+      <ActionIcon
+        aria-label={`Switch to ${nextColorScheme} mode`}
+        variant="light"
+        size="lg"
+        onClick={() => setColorScheme(nextColorScheme)}
+      >
+        <Icon size={18} />
+      </ActionIcon>
+    </Tooltip>
   );
 }
 

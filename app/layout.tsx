@@ -16,10 +16,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="en" {...mantineHtmlProps}>
       <head>
-        <ColorSchemeScript defaultColorScheme="light" />
+        <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <MantineProvider defaultColorScheme="light">
+        <MantineProvider defaultColorScheme="auto">
           <Notifications position="top-right" />
           {children}
         </MantineProvider>
