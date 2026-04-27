@@ -42,7 +42,7 @@ import {
 import { useState } from "react";
 import { chunkDocuments, createDocumentId } from "@/lib/chunking";
 import { seedDocuments } from "@/lib/seed-documents";
-import type { SearchResult, SourceType } from "@/lib/types";
+import type { ChatResponse, MatchResponse, PromptVersion, SearchResult, SourceType } from "@/lib/types";
 
 const seedChunks = chunkDocuments(seedDocuments);
 const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
@@ -367,6 +367,82 @@ function SearchPanel() {
 }
 
 function ChatPanel() {
+  const [question, setQuestion] = useState("How well does this candidate match the AI Engineer role?");
+  const [promptVersion, setPromptVersion] = useState<PromptVersion>("rag_strict_v2");
+  const [topK, setTopK] = useState<number | string>(5);
+  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
+  const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
+
+  async function handleAsk() {
+    setIsAsking(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question,
+          topK: getNumericTopK(topK),
+          promptVersion,
+        }),
+      });
+      const payload = (await response.json()) as ChatApiResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not generate a RAG answer.");
+      }
+
+      setChatResponse(payload);
+      notifications.show({
+        title: "RAG answer generated",
+        message: `${payload.retrievedChunks.length} context chunks used`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "RAG chat failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsAsking(false);
+    }
+  }
+
+  async function handleScoreMatch() {
+    setIsScoring(true);
+
+    try {
+      const response = await fetch("/api/match", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as MatchApiResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not score CV-job match.");
+      }
+
+      setMatchResponse(payload);
+      notifications.show({
+        title: "Match score generated",
+        message: `${payload.score}/100`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Match scoring failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsScoring(false);
+    }
+  }
+
   return (
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
@@ -376,33 +452,90 @@ function ChatPanel() {
               label="Question"
               autosize
               minRows={2}
-              defaultValue="How well does this candidate match the AI Engineer role?"
+              onChange={(event) => setQuestion(event.currentTarget.value)}
+              value={question}
               style={{ flex: 1 }}
             />
             <Select
               label="Prompt"
-              defaultValue="rag_strict_v2"
+              onChange={(value) => setPromptVersion((value as PromptVersion | null) ?? "rag_strict_v2")}
+              value={promptVersion}
               data={["rag_v1", "rag_strict_v2", "match_score_v1"]}
               w={190}
             />
-            <Button leftSection={<Bot size={16} />}>Ask</Button>
+            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+            <Button leftSection={<Bot size={16} />} loading={isAsking} onClick={handleAsk}>
+              Ask
+            </Button>
+            <Button loading={isScoring} onClick={handleScoreMatch} variant="light">
+              Score match
+            </Button>
           </Group>
-          <Alert color="blue" variant="light" title="Answer preview">
-            Match score: 84/100. The candidate is a strong match for Next.js,
-            TypeScript, Node.js, AI developer tooling, semantic search, and
-            RAG workflows. Sources: Candidate profile chunk 7, AI Engineer role
-            chunk 3.
+          <Alert color="blue" variant="light" title={chatResponse ? "RAG answer" : "Answer preview"}>
+            {chatResponse?.answer ??
+              "Match score: 84/100. The candidate is a strong match for Next.js, TypeScript, Node.js, AI developer tooling, semantic search, and RAG workflows. Sources: Candidate profile chunk 7, AI Engineer role chunk 3."}
           </Alert>
+          {chatResponse ? (
+            <Group gap="xs">
+              <Badge variant="light" color="violet">
+                {chatResponse.model}
+              </Badge>
+              <Badge variant="light" color="gray">
+                {chatResponse.latencyMs} ms
+              </Badge>
+              <Badge variant="light" color="blue">
+                {chatResponse.retrievedChunks.length} chunks
+              </Badge>
+            </Group>
+          ) : null}
+          {matchResponse ? <MatchScoreResult result={matchResponse} /> : null}
           <JsonInput
             label="Retrieved context"
             autosize
             minRows={7}
-            value={JSON.stringify(initialSearchResults, null, 2)}
+            value={JSON.stringify(chatResponse?.retrievedChunks ?? initialSearchResults, null, 2)}
             readOnly
           />
         </Stack>
       </Card>
     </Stack>
+  );
+}
+
+function MatchScoreResult({ result }: { result: MatchResponse }) {
+  return (
+    <Alert color="teal" variant="light" title={`CV-job match: ${result.score}/100`}>
+      <Stack gap="sm">
+        <Progress value={result.score} color={getScoreColor(result.score)} />
+        <Text size="sm">{result.summary}</Text>
+        <Table.ScrollContainer minWidth={560}>
+          <Table verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Strengths</Table.Th>
+                <Table.Th>Gaps</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {zipLists(result.strengths, result.gaps).map((row, index) => (
+                <Table.Tr key={`${row.strength}-${row.gap}-${index}`}>
+                  <Table.Td>{row.strength}</Table.Td>
+                  <Table.Td>{row.gap}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+        <Group gap="xs">
+          <Badge variant="light" color="violet">
+            {result.model}
+          </Badge>
+          <Badge variant="light" color="gray">
+            {result.latencyMs} ms
+          </Badge>
+        </Group>
+      </Stack>
+    </Alert>
   );
 }
 
@@ -492,6 +625,14 @@ type SearchResponse = {
   error?: string;
 };
 
+type ChatApiResponse = ChatResponse & {
+  error?: string;
+};
+
+type MatchApiResponse = MatchResponse & {
+  error?: string;
+};
+
 function getNumericTopK(value: number | string) {
   const parsed = typeof value === "number" ? value : Number(value);
 
@@ -504,4 +645,25 @@ function getNumericTopK(value: number | string) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function getScoreColor(score: number) {
+  if (score >= 80) {
+    return "green";
+  }
+
+  if (score >= 60) {
+    return "yellow";
+  }
+
+  return "red";
+}
+
+function zipLists(left: string[], right: string[]) {
+  const maxLength = Math.max(left.length, right.length, 1);
+
+  return Array.from({ length: maxLength }, (_, index) => ({
+    strength: left[index] ?? "",
+    gap: right[index] ?? "",
+  }));
 }

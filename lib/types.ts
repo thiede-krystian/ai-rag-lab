@@ -52,6 +52,16 @@ export type ChatResponse = {
   latencyMs: number;
 };
 
+export type MatchResponse = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  evidence: string[];
+  model: string;
+  latencyMs: number;
+};
+
 export type EvalRun = {
   id: string;
   promptVersion: PromptVersion;

@@ -8,6 +8,10 @@ export const embeddingConfig = {
   dimensions: getOptionalNumber(process.env.OPENROUTER_EMBEDDING_DIMENSIONS) ?? 1536,
 };
 
+export const chatConfig = {
+  model: process.env.OPENROUTER_CHAT_MODEL ?? "openai/gpt-4.1-mini",
+};
+
 export const openRouterConfig = {
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
