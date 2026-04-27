@@ -1,0 +1,23 @@
+[
+  {
+    "id": "candidate-profile",
+    "title": "Candidate profile",
+    "sourceType": "cv",
+    "tags": ["candidate", "nextjs", "typescript", "ai-engineering"],
+    "content": "Wilodem is a full-stack engineer focused on AI-assisted product development. He works daily with Next.js, Node.js, NestJS, TypeScript, PostgreSQL, and modern developer tooling. His current workflow includes Codex, Cursor, Windsurf, OpenRouter, multimodal AI models, and rapid prototyping of LLM-driven application features.\n\nRelevant experience includes building internal tools, automations, dashboards, and product experiments where AI is used to speed up research, coding, content generation, and decision support. He is comfortable designing user-facing workflows, writing backend APIs, and integrating model outputs into product interfaces.\n\nFor AI search and RAG work, the candidate understands document ingestion, chunking, embeddings, semantic retrieval, prompt versioning, source-grounded answers, and evaluation loops. He can explain tradeoffs between keyword search and vector search, and he can build local prototypes that demonstrate vector indexes, relevance scoring, and answer quality checks."
+  },
+  {
+    "id": "ai-engineer-role",
+    "title": "AI Engineer role",
+    "sourceType": "job",
+    "tags": ["job-offer", "rag", "semantic-search", "nodejs"],
+    "content": "The AI Engineer role is focused on building product features in Node.js, Next.js, and TypeScript with a strong AI component. The product helps users find relevant job opportunities and can automatically apply to selected roles. Another product area focuses on learning, knowledge generation, and custom AI chats tailored to specific niches.\n\nThe team needs someone who can work with embeddings, prompting, vector databases, vector indexes, semantic search, RAG, scoring, and evaluation pipelines. The engineer should be able to move from prototype to production-quality implementation, including API design, data flow, latency awareness, and quality measurement.\n\nStrong candidates should understand how to retrieve relevant context from a document corpus, use that context in a prompt, generate grounded answers, and evaluate whether the system is returning useful and faithful responses. Experience with fast AI search and practical LLM tooling is especially relevant."
+  },
+  {
+    "id": "rag-evals-notes",
+    "title": "RAG and eval notes",
+    "sourceType": "knowledge",
+    "tags": ["rag", "evals", "prompting", "vector-search"],
+    "content": "A RAG pipeline starts with source documents, normalizes and chunks text, creates embeddings for each chunk, and stores those vectors in a vector database. At query time, the system embeds the user's question, retrieves the most similar chunks, and passes those chunks into a prompt as grounded context for the language model.\n\nEmbeddings represent the meaning of text as vectors. Vector indexes such as HNSW make approximate nearest-neighbor search fast enough for interactive applications. Similarity scores help rank retrieved chunks, while metadata filters can narrow search to specific document types, tags, or users.\n\nPrompting should be treated as versioned product logic. A strict RAG prompt should tell the model to use only provided context, cite sources, and say when the answer is not supported by the retrieved documents. Evaluation pipelines compare prompt versions and retrieval settings using metrics such as Recall@K, MRR, answer faithfulness, citation accuracy, latency, and pass rate."
+  }
+]

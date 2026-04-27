@@ -38,25 +38,37 @@ import {
   Sun,
   UploadCloud,
 } from "lucide-react";
+import { chunkDocuments, createDocumentId } from "@/lib/chunking";
+import { seedDocuments } from "@/lib/seed-documents";
+import type { SourceType } from "@/lib/types";
 
-const indexedDocuments = [
-  { title: "Candidate profile", type: "CV", chunks: 18, status: "Seeded" },
-  { title: "AI Engineer role", type: "Job", chunks: 12, status: "Seeded" },
-  { title: "RAG and eval notes", type: "Knowledge", chunks: 16, status: "Seeded" },
-];
+const seedChunks = chunkDocuments(seedDocuments);
+const candidateChunk = seedChunks.find((chunk) => chunk.sourceType === "cv");
+const roleChunk = seedChunks.find((chunk) => chunk.sourceType === "job");
+
+const indexedDocuments = seedDocuments.map((document, index) => ({
+  title: document.title,
+  type: getSourceTypeLabel(document.sourceType),
+  chunks: seedChunks.filter((chunk) => chunk.documentId === createDocumentId(document, index)).length,
+  status: "Seeded",
+}));
 
 const searchResults = [
   {
-    title: "Candidate profile",
-    chunk: 7,
+    title: candidateChunk?.title ?? "Candidate profile",
+    chunk: (candidateChunk?.chunkIndex ?? 0) + 1,
     score: 0.91,
-    text: "Daily work with Next.js, Node.js, TypeScript, AI coding tools, and LLM-driven product workflows.",
+    text:
+      candidateChunk?.text ??
+      "Daily work with Next.js, Node.js, TypeScript, AI coding tools, and LLM-driven product workflows.",
   },
   {
-    title: "AI Engineer role",
-    chunk: 3,
+    title: roleChunk?.title ?? "AI Engineer role",
+    chunk: (roleChunk?.chunkIndex ?? 0) + 1,
     score: 0.87,
-    text: "The position focuses on embeddings, prompt engineering, semantic search, and RAG-based AI features.",
+    text:
+      roleChunk?.text ??
+      "The position focuses on embeddings, prompt engineering, semantic search, and RAG-based AI features.",
   },
 ];
 
@@ -161,8 +173,8 @@ function DocumentsPanel() {
   return (
     <Stack gap="md">
       <Group align="stretch" grow>
-        <MetricCard label="Documents" value="3" detail="seed corpus" />
-        <MetricCard label="Chunks" value="46" detail="ready to index" />
+        <MetricCard label="Documents" value={String(seedDocuments.length)} detail="seed corpus" />
+        <MetricCard label="Chunks" value={String(seedChunks.length)} detail="ready to index" />
         <MetricCard label="Vector collection" value="ai_rag_lab_documents" detail="Qdrant" />
       </Group>
 
@@ -356,4 +368,14 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
       </Text>
     </Card>
   );
+}
+
+function getSourceTypeLabel(sourceType: SourceType) {
+  const labels: Record<SourceType, string> = {
+    cv: "CV",
+    job: "Job",
+    knowledge: "Knowledge",
+  };
+
+  return labels[sourceType];
 }
