@@ -363,19 +363,21 @@ const styles = StyleSheet.create({
   header: {
     borderBottomWidth: 1,
     borderBottomColor: "#D7DCE5",
-    paddingBottom: 12,
-    marginBottom: 14,
+    paddingBottom: 14,
+    marginBottom: 16,
   },
   name: {
-    fontSize: 24,
+    fontSize: 23,
+    lineHeight: 1.18,
     fontFamily: "Helvetica-Bold",
     color: "#0F172A",
-    marginBottom: 4,
+    marginBottom: 7,
   },
   headline: {
     fontSize: 11,
+    lineHeight: 1.25,
     color: "#374151",
-    marginBottom: 6,
+    marginBottom: 7,
   },
   contact: {
     fontSize: 8.5,
