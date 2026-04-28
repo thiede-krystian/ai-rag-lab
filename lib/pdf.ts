@@ -1,12 +1,6 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import {
-  getDocument,
-  GlobalWorkerOptions,
-  version as pdfjsVersion,
-} from "pdfjs-dist/legacy/build/pdf.mjs";
-
 export type PdfTextExtractionResult = {
   text: string;
   pageCount: number;
@@ -19,13 +13,17 @@ type PdfTextItem = {
   str: string;
   hasEOL?: boolean;
 };
+type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 
 const standardFontDataUrl = `${join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts")}/`;
 const workerSrc = pathToFileURL(
   join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"),
 ).href;
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
 
 export async function extractPdfText(data: PdfBinary): Promise<PdfTextExtractionResult> {
+  const { getDocument, GlobalWorkerOptions, version: pdfjsVersion } = await loadPdfJs();
+
   GlobalWorkerOptions.workerSrc = workerSrc;
 
   const pdfData = toUint8Array(data);
@@ -61,6 +59,12 @@ export async function extractPdfText(data: PdfBinary): Promise<PdfTextExtraction
   } finally {
     await pdf.destroy();
   }
+}
+
+function loadPdfJs() {
+  pdfJsModulePromise ??= import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  return pdfJsModulePromise;
 }
 
 function toUint8Array(data: PdfBinary): Uint8Array {

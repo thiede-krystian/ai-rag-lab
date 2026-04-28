@@ -176,6 +176,10 @@ function jsonError(error: unknown) {
   const status =
     error instanceof ImportRequestError ? error.status : error instanceof z.ZodError ? 400 : 500;
 
+  if (status >= 500) {
+    console.error("[api/import] failed", error);
+  }
+
   return NextResponse.json(
     {
       error: message,

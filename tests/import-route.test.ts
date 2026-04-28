@@ -64,6 +64,19 @@ describe("PDF import API", () => {
     expect(mocks.extractPdfText).not.toHaveBeenCalled();
   });
 
+  it("rejects empty PDF files before extraction", async () => {
+    const response = await POST(
+      createImportRequest({
+        file: new File([], "empty.pdf", { type: "application/pdf" }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("PDF file is empty.");
+    expect(mocks.extractPdfText).not.toHaveBeenCalled();
+  });
+
   it("exposes a lightweight health check", async () => {
     const response = GET();
     const payload = await response.json();
