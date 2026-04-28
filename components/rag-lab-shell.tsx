@@ -176,9 +176,6 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               <Tabs.Tab value="documents" leftSection={<FileText size={16} />} data-tour="tab-documents">
                 Documents
               </Tabs.Tab>
-              <Tabs.Tab value="cv" leftSection={<FilePenLine size={16} />} data-tour="tab-cv">
-                CV Maker
-              </Tabs.Tab>
               <Tabs.Tab value="search" leftSection={<Search size={16} />} data-tour="tab-search">
                 Semantic Search
               </Tabs.Tab>
@@ -188,6 +185,14 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               <Tabs.Tab value="evals" leftSection={<Gauge size={16} />} data-tour="tab-evals">
                 Evals
               </Tabs.Tab>
+              <Tabs.Tab
+                value="cv"
+                leftSection={<FilePenLine size={16} />}
+                data-tour="tab-cv"
+                style={{ marginLeft: "auto" }}
+              >
+                CV Maker
+              </Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="documents">
@@ -195,9 +200,6 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
                 embeddingProfile={embeddingProfile}
                 onEmbeddingProfileChange={setEmbeddingProfile}
               />
-            </Tabs.Panel>
-            <Tabs.Panel value="cv">
-              <CvMakerPanel />
             </Tabs.Panel>
             <Tabs.Panel value="search">
               <SearchPanel embeddingProfile={embeddingProfile} />
@@ -207,6 +209,9 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
             </Tabs.Panel>
             <Tabs.Panel value="evals">
               <EvalsPanel embeddingProfile={embeddingProfile} />
+            </Tabs.Panel>
+            <Tabs.Panel value="cv">
+              <CvMakerPanel />
             </Tabs.Panel>
           </Tabs>
         </Container>
