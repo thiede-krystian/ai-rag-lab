@@ -506,7 +506,7 @@ function DocumentsPanel({
             <Title order={3} size="h4">
               Corpus
             </Title>
-            <Group>
+            <Group align="flex-end">
               <Select
                 label="Embedding profile"
                 data-tour="embedding-profile"
@@ -517,7 +517,7 @@ function DocumentsPanel({
                 data={embeddingProfileSelectData}
                 w={230}
               />
-              <Group gap="xs" data-tour="collection-actions">
+              <Group align="flex-end" gap="xs" data-tour="collection-actions">
                 <Button
                   leftSection={<RefreshCw size={16} />}
                   loading={isLoadingDocuments}
