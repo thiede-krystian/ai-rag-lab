@@ -39,6 +39,7 @@ import {
   Database,
   Eye,
   EyeOff,
+  FilePenLine,
   FileText,
   Gauge,
   HelpCircle,
@@ -68,6 +69,7 @@ import type {
   SearchResult,
   SourceType,
 } from "@/lib/types";
+import { CvMakerPanel } from "./cv-maker-panel";
 import { ProductTour, type TourTab } from "./product-tour";
 
 const embeddingProfileOptions = getEmbeddingProfileOptions();
@@ -174,6 +176,9 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               <Tabs.Tab value="documents" leftSection={<FileText size={16} />} data-tour="tab-documents">
                 Documents
               </Tabs.Tab>
+              <Tabs.Tab value="cv" leftSection={<FilePenLine size={16} />} data-tour="tab-cv">
+                CV Maker
+              </Tabs.Tab>
               <Tabs.Tab value="search" leftSection={<Search size={16} />} data-tour="tab-search">
                 Semantic Search
               </Tabs.Tab>
@@ -190,6 +195,9 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
                 embeddingProfile={embeddingProfile}
                 onEmbeddingProfileChange={setEmbeddingProfile}
               />
+            </Tabs.Panel>
+            <Tabs.Panel value="cv">
+              <CvMakerPanel />
             </Tabs.Panel>
             <Tabs.Panel value="search">
               <SearchPanel embeddingProfile={embeddingProfile} />

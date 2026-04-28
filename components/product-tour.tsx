@@ -8,7 +8,7 @@ import {
   shouldAutoStartProductTour,
 } from "@/lib/tour-state";
 
-export type TourTab = "documents" | "search" | "chat" | "evals";
+export type TourTab = "documents" | "cv" | "search" | "chat" | "evals";
 
 type ProductTourProps = {
   activeTab: TourTab;
@@ -103,6 +103,46 @@ const TOUR_STEPS: ProductTourStep[] = [
     description:
       "This table is built from Qdrant payloads and shows real indexed documents, their source type, chunks, and tags.",
     side: "top",
+  },
+  {
+    target: "tab-cv",
+    tab: "cv",
+    title: "CV Maker",
+    description:
+      "CV Maker extracts text from a searchable CV PDF, turns it into an editable draft, and exports a new CV.",
+    side: "bottom",
+  },
+  {
+    target: "cv-import",
+    tab: "cv",
+    title: "CV PDF import",
+    description:
+      "This import is separate from Qdrant. It only extracts text for editing and keeps the draft in this browser.",
+    side: "bottom",
+  },
+  {
+    target: "cv-editor",
+    tab: "cv",
+    title: "Structured editor",
+    description:
+      "Edit personal info, summary, skills, experience, projects, education, certifications, and languages.",
+    side: "top",
+  },
+  {
+    target: "cv-ai",
+    tab: "cv",
+    title: "AI parse",
+    description:
+      "Optionally send the extracted CV text to OpenRouter to improve the structure of the editable draft.",
+    side: "bottom",
+  },
+  {
+    target: "cv-export",
+    tab: "cv",
+    title: "Export CV",
+    description:
+      "Download Markdown in the browser or generate a clean A4 PDF from the structured CV draft.",
+    side: "bottom",
   },
   {
     target: "tab-search",
