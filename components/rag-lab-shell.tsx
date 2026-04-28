@@ -13,6 +13,7 @@ import {
   FileInput,
   Group,
   JsonInput,
+  Menu,
   Modal,
   NumberInput,
   Paper,
@@ -36,10 +37,14 @@ import { notifications } from "@mantine/notifications";
 import {
   Bot,
   Database,
+  Eye,
+  EyeOff,
   FileText,
   Gauge,
+  HelpCircle,
   Moon,
   Play,
+  PlayCircle,
   RefreshCw,
   Search,
   Sun,
@@ -51,6 +56,7 @@ import {
   getEmbeddingProfileOptions,
   type EmbeddingProfileId,
 } from "@/lib/embedding-profiles";
+import { setProductTourAutoDisabled } from "@/lib/tour-state";
 import type {
   ChatResponse,
   ImportMode,
@@ -61,6 +67,7 @@ import type {
   SearchResult,
   SourceType,
 } from "@/lib/types";
+import { ProductTour, type TourTab } from "./product-tour";
 
 const embeddingProfileOptions = getEmbeddingProfileOptions();
 const embeddingProfileSelectData = embeddingProfileOptions.map((profile) => ({
@@ -82,19 +89,50 @@ const ragPromptOptions = [
 type QdrantTarget = "local" | "cloud";
 
 export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
+  const [activeTab, setActiveTab] = useState<TourTab>("documents");
   const [embeddingProfile, setEmbeddingProfile] =
     useState<EmbeddingProfileId>(defaultEmbeddingProfileId);
+  const [isTourAutoDisabled, setIsTourAutoDisabled] = useState(false);
+  const [tourRunId, setTourRunId] = useState(0);
   const qdrantBadge =
     qdrantTarget === "cloud"
       ? { color: "cyan", label: "Qdrant Cloud" }
       : { color: "teal", label: "Local Qdrant" };
 
+  const handleStartTour = useCallback(() => {
+    setTourRunId((currentRunId) => currentRunId + 1);
+  }, []);
+
+  const handleToggleAutoGuide = useCallback(() => {
+    const nextIsDisabled = !isTourAutoDisabled;
+
+    setProductTourAutoDisabled(window.localStorage, nextIsDisabled);
+    setIsTourAutoDisabled(nextIsDisabled);
+    notifications.show({
+      title: nextIsDisabled ? "Auto guide disabled" : "Auto guide enabled",
+      message: nextIsDisabled
+        ? "The guide will still be available from the topbar menu."
+        : "The guide can auto-start again for first-time localStorage state.",
+      color: nextIsDisabled ? "yellow" : "green",
+    });
+  }, [isTourAutoDisabled]);
+
+  const handleTabChange = useCallback((value: string | null) => {
+    setActiveTab((value as TourTab | null) ?? "documents");
+  }, []);
+
   return (
     <AppShell header={{ height: 72 }} padding="md">
+      <ProductTour
+        activeTab={activeTab}
+        onAutoDisabledChange={setIsTourAutoDisabled}
+        runId={tourRunId}
+        setActiveTab={setActiveTab}
+      />
       <AppShell.Header>
         <Container size="xl" h="100%">
           <Group h="100%" justify="space-between">
-            <Group gap="sm">
+            <Group gap="sm" data-tour="app-header">
               <Database size={28} strokeWidth={1.8} />
               <div>
                 <Title order={2} size="h3">
@@ -106,7 +144,7 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               </div>
             </Group>
             <Group gap="xs" visibleFrom="sm">
-              <Badge variant="light" color={qdrantBadge.color}>
+              <Badge variant="light" color={qdrantBadge.color} data-tour="qdrant-target">
                 {qdrantBadge.label}
               </Badge>
               <Badge variant="light" color="blue">
@@ -116,25 +154,32 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
                 OpenRouter chat
               </Badge>
             </Group>
-            <ColorSchemeToggle />
+            <Group gap="xs">
+              <GuideMenu
+                isAutoDisabled={isTourAutoDisabled}
+                onStart={handleStartTour}
+                onToggleAutoGuide={handleToggleAutoGuide}
+              />
+              <ColorSchemeToggle />
+            </Group>
           </Group>
         </Container>
       </AppShell.Header>
 
       <AppShell.Main>
         <Container size="xl">
-          <Tabs defaultValue="documents" keepMounted={false}>
+          <Tabs value={activeTab} onChange={handleTabChange} keepMounted={false}>
             <Tabs.List mb="md">
-              <Tabs.Tab value="documents" leftSection={<FileText size={16} />}>
+              <Tabs.Tab value="documents" leftSection={<FileText size={16} />} data-tour="tab-documents">
                 Documents
               </Tabs.Tab>
-              <Tabs.Tab value="search" leftSection={<Search size={16} />}>
+              <Tabs.Tab value="search" leftSection={<Search size={16} />} data-tour="tab-search">
                 Semantic Search
               </Tabs.Tab>
-              <Tabs.Tab value="chat" leftSection={<Bot size={16} />}>
+              <Tabs.Tab value="chat" leftSection={<Bot size={16} />} data-tour="tab-chat">
                 RAG Chat
               </Tabs.Tab>
-              <Tabs.Tab value="evals" leftSection={<Gauge size={16} />}>
+              <Tabs.Tab value="evals" leftSection={<Gauge size={16} />} data-tour="tab-evals">
                 Evals
               </Tabs.Tab>
             </Tabs.List>
@@ -182,6 +227,37 @@ function ColorSchemeToggle() {
         <Icon size={18} />
       </ActionIcon>
     </Tooltip>
+  );
+}
+
+function GuideMenu({
+  isAutoDisabled,
+  onStart,
+  onToggleAutoGuide,
+}: {
+  isAutoDisabled: boolean;
+  onStart: () => void;
+  onToggleAutoGuide: () => void;
+}) {
+  const AutoGuideIcon = isAutoDisabled ? Eye : EyeOff;
+
+  return (
+    <Menu position="bottom-end" shadow="md" width={220}>
+      <Menu.Target>
+        <ActionIcon aria-label="Guide" data-tour="guide-menu" size="lg" variant="light">
+          <HelpCircle size={18} />
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>Guide</Menu.Label>
+        <Menu.Item leftSection={<PlayCircle size={16} />} onClick={onStart}>
+          Start guide
+        </Menu.Item>
+        <Menu.Item leftSection={<AutoGuideIcon size={16} />} onClick={onToggleAutoGuide}>
+          {isAutoDisabled ? "Enable auto guide" : "Disable auto guide"}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
 
@@ -418,7 +494,7 @@ function DocumentsPanel({
 
   return (
     <Stack gap="md">
-      <Group align="stretch" grow>
+      <Group align="stretch" grow data-tour="documents-metrics">
         <MetricCard label="Documents" value={String(documentRows.length)} detail="Qdrant inventory" />
         <MetricCard label="Chunks" value={String(documentChunkCount)} detail="indexed payloads" />
         <MetricCard label="Vector collection" value="ai_rag_lab_documents" detail="Qdrant" />
@@ -433,6 +509,7 @@ function DocumentsPanel({
             <Group>
               <Select
                 label="Embedding profile"
+                data-tour="embedding-profile"
                 onChange={(value) =>
                   onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
                 }
@@ -440,26 +517,36 @@ function DocumentsPanel({
                 data={embeddingProfileSelectData}
                 w={230}
               />
+              <Group gap="xs" data-tour="collection-actions">
+                <Button
+                  leftSection={<RefreshCw size={16} />}
+                  loading={isLoadingDocuments}
+                  onClick={loadDocuments}
+                  variant="default"
+                >
+                  Refresh
+                </Button>
+                <Button
+                  leftSection={<RefreshCw size={16} />}
+                  loading={isResetting}
+                  onClick={handleResetCollection}
+                  variant="outline"
+                >
+                  Reset collection
+                </Button>
+              </Group>
               <Button
-                leftSection={<RefreshCw size={16} />}
-                loading={isLoadingDocuments}
-                onClick={loadDocuments}
-                variant="default"
+                leftSection={<FileText size={16} />}
+                onClick={() => setIsTextDocumentOpen(true)}
+                data-tour="add-text-button"
               >
-                Refresh
-              </Button>
-              <Button
-                leftSection={<RefreshCw size={16} />}
-                loading={isResetting}
-                onClick={handleResetCollection}
-                variant="outline"
-              >
-                Reset collection
-              </Button>
-              <Button leftSection={<FileText size={16} />} onClick={() => setIsTextDocumentOpen(true)}>
                 Add text
               </Button>
-              <Button leftSection={<UploadCloud size={16} />} onClick={() => setIsImportOpen(true)}>
+              <Button
+                leftSection={<UploadCloud size={16} />}
+                onClick={() => setIsImportOpen(true)}
+                data-tour="import-pdf-button"
+              >
                 Import PDF
               </Button>
             </Group>
@@ -488,7 +575,7 @@ function DocumentsPanel({
               </Group>
             </Alert>
           ) : null}
-          <Table.ScrollContainer minWidth={640}>
+          <Table.ScrollContainer minWidth={640} data-tour="documents-table">
             <Table verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
@@ -724,7 +811,7 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group align="flex-end">
+          <Group align="flex-end" data-tour="search-form">
             <Textarea
               label="Query"
               autosize
@@ -734,12 +821,17 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
               style={{ flex: 1 }}
             />
             <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
-            <Button leftSection={<Search size={16} />} loading={isSearching} onClick={handleSearch}>
+            <Button
+              leftSection={<Search size={16} />}
+              loading={isSearching}
+              onClick={handleSearch}
+              data-tour="search-button"
+            >
               Search
             </Button>
           </Group>
           <Divider />
-          <Stack gap="sm">
+          <Stack gap="sm" data-tour="search-results">
             {results.length > 0 ? (
               results.map((result) => (
                 <Paper key={result.id} withBorder radius="md" p="md">
@@ -916,7 +1008,7 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group align="flex-end">
+          <Group align="flex-end" data-tour="chat-form">
             <Textarea
               label="Question"
               autosize
@@ -933,7 +1025,12 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
               w={190}
             />
             <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
-            <Button leftSection={<Bot size={16} />} loading={isAsking} onClick={handleAsk}>
+            <Button
+              leftSection={<Bot size={16} />}
+              loading={isAsking}
+              onClick={handleAsk}
+              data-tour="chat-button"
+            >
               Ask
             </Button>
           </Group>
@@ -957,13 +1054,14 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
           <JsonInput
             label="Retrieved context"
             autosize
+            data-tour="retrieved-context"
             minRows={7}
             value={JSON.stringify(chatResponse?.retrievedChunks ?? [], null, 2)}
             readOnly
           />
         </Stack>
       </Card>
-      <Card withBorder radius="md" padding="lg">
+      <Card withBorder radius="md" padding="lg" data-tour="match-card">
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">
             <div>
@@ -1002,7 +1100,12 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
               value={selectedJobTitle}
               style={{ flex: 1 }}
             />
-            <Button loading={isScoring} onClick={handleScoreMatch} variant="light">
+            <Button
+              loading={isScoring}
+              onClick={handleScoreMatch}
+              variant="light"
+              data-tour="score-match-button"
+            >
               Score match
             </Button>
           </Group>
@@ -1198,39 +1301,46 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
               >
                 Refresh documents
               </Button>
-              <Button leftSection={<Play size={16} />} loading={isRunning} onClick={handleRunPdfEvals}>
+              <Button
+                leftSection={<Play size={16} />}
+                loading={isRunning}
+                onClick={handleRunPdfEvals}
+                data-tour="run-evals-button"
+              >
                 Run evals
               </Button>
             </Group>
           </Group>
-          <Group align="flex-end">
-            <Select
-              data={documentOptions}
-              label="Expected document"
-              onChange={setTargetTitle}
-              placeholder="Choose indexed document"
-              searchable
-              value={selectedTargetTitle}
-              style={{ flex: 1 }}
+          <Stack gap="md" data-tour="evals-form">
+            <Group align="flex-end">
+              <Select
+                data={documentOptions}
+                label="Expected document"
+                onChange={setTargetTitle}
+                placeholder="Choose indexed document"
+                searchable
+                value={selectedTargetTitle}
+                style={{ flex: 1 }}
+              />
+              <Select
+                data={sourceTypeSelectData}
+                label="Source type"
+                onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
+                value={sourceType}
+                w={160}
+              />
+              <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+            </Group>
+            <Textarea
+              label="Queries"
+              autosize
+              minRows={3}
+              onChange={(event) => setQueries(event.currentTarget.value)}
+              value={queries}
             />
-            <Select
-              data={sourceTypeSelectData}
-              label="Source type"
-              onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
-              value={sourceType}
-              w={160}
-            />
-            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
-          </Group>
-          <Textarea
-            label="Queries"
-            autosize
-            minRows={3}
-            onChange={(event) => setQueries(event.currentTarget.value)}
-            value={queries}
-          />
+          </Stack>
           {run ? (
-            <Stack gap="md">
+            <Stack gap="md" data-tour="evals-results">
               <Group gap="xs">
                 <Badge variant="light" color="violet">
                   {run.model}
@@ -1283,7 +1393,7 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
               </Table.ScrollContainer>
             </Stack>
           ) : (
-            <Alert color="blue" variant="light">
+            <Alert color="blue" variant="light" data-tour="evals-results">
               Import a searchable PDF or add a document, choose it here, then run one query per line.
             </Alert>
           )}

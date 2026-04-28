@@ -1,5 +1,6 @@
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import "driver.js/dist/driver.css";
 import "./globals.css";
 
 import { MantineProvider, mantineHtmlProps } from "@mantine/core";
