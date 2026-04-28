@@ -19,6 +19,16 @@ const importFieldsSchema = z.object({
   mode: z.enum(["append", "replace"]).default("append"),
 });
 
+export function GET() {
+  return NextResponse.json({
+    ok: true,
+    route: "/api/import",
+    runtime,
+    nodeVersion: process.version,
+    maxDuration,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();

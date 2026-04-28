@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "@/app/api/import/route";
+import { GET, POST } from "@/app/api/import/route";
 
 const mocks = vi.hoisted(() => ({
   createEmbeddings: vi.fn(),
@@ -62,6 +62,20 @@ describe("PDF import API", () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe("Only PDF files are supported.");
     expect(mocks.extractPdfText).not.toHaveBeenCalled();
+  });
+
+  it("exposes a lightweight health check", async () => {
+    const response = GET();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      route: "/api/import",
+      runtime: "nodejs",
+      maxDuration: 60,
+    });
+    expect(payload.nodeVersion).toMatch(/^v\d+\./);
   });
 
   it("rejects PDFs without extracted text", async () => {

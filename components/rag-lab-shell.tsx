@@ -51,6 +51,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readApiResponse } from "@/lib/api-response";
 import {
   defaultEmbeddingProfileId,
   getEmbeddingProfileOptions,
@@ -343,7 +344,7 @@ function DocumentsPanel({
           embeddingProfile,
         }),
       });
-      const payload = (await response.json()) as ResetCollectionResponse;
+      const payload = await readApiResponse<ResetCollectionResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not reset Qdrant collection.");
@@ -401,7 +402,7 @@ function DocumentsPanel({
         method: "POST",
         body: formData,
       });
-      const payload = (await response.json()) as ImportResponse;
+      const payload = await readApiResponse<ImportResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not import PDF document.");
@@ -464,7 +465,7 @@ function DocumentsPanel({
           resetCollection: textMode === "replace",
         }),
       });
-      const payload = (await response.json()) as TextIngestResponse;
+      const payload = await readApiResponse<TextIngestResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not add text document.");
@@ -784,7 +785,7 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
           embeddingProfile,
         }),
       });
-      const payload = (await response.json()) as SearchResponse;
+      const payload = await readApiResponse<SearchResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not search indexed documents.");
@@ -935,7 +936,7 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
           embeddingProfile,
         }),
       });
-      const payload = (await response.json()) as ChatApiResponse;
+      const payload = await readApiResponse<ChatApiResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not generate a RAG answer.");
@@ -981,7 +982,7 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
           jobTitle: selectedJobTitle,
         }),
       });
-      const payload = (await response.json()) as MatchApiResponse;
+      const payload = await readApiResponse<MatchApiResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not score CV-job match.");
@@ -1253,7 +1254,7 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
           topK: getNumericTopK(topK),
         }),
       });
-      const payload = (await response.json()) as QuickEvalRunResponse;
+      const payload = await readApiResponse<QuickEvalRunResponse>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not run PDF evals.");
@@ -1451,7 +1452,7 @@ function getSelectedDocumentTitle(
 
 async function fetchDocumentInventory() {
   const response = await fetch("/api/documents");
-  const payload = (await response.json()) as DocumentsResponse;
+  const payload = await readApiResponse<DocumentsResponse>(response);
 
   if (!response.ok) {
     throw new Error(payload.error ?? "Could not load indexed documents.");
