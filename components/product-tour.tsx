@@ -40,6 +40,14 @@ const TOUR_STEPS: ProductTourStep[] = [
     align: "start",
   },
   {
+    target: "demo-flow-panel",
+    tab: "documents",
+    title: "Recommended demo flow",
+    description:
+      "Use this checklist to move through the interview-ready story: import documents, search, ask RAG, run evals, and score a CV-job fit.",
+    side: "bottom",
+  },
+  {
     target: "qdrant-target",
     tab: "documents",
     title: "Active Qdrant target",
@@ -48,84 +56,27 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "bottom",
   },
   {
-    target: "guide-menu",
-    tab: "documents",
-    title: "Guide controls",
-    description:
-      "Use this menu to restart the walkthrough manually or disable the automatic first-visit guide.",
-    side: "bottom",
-    align: "end",
-  },
-  {
-    target: "documents-metrics",
-    tab: "documents",
-    title: "Indexed document inventory",
-    description:
-      "These metrics summarize what is currently stored in Qdrant: grouped documents and indexed chunks.",
-    side: "bottom",
-  },
-  {
-    target: "embedding-profile",
-    tab: "documents",
-    title: "Embedding profile",
-    description:
-      "The profile controls the embedding model and vector dimensions. Keep one profile per Qdrant collection.",
-    side: "bottom",
-  },
-  {
-    target: "collection-actions",
-    tab: "documents",
-    title: "Collection actions",
-    description:
-      "Refresh reloads the Qdrant inventory. Reset recreates the collection for the selected embedding profile.",
-    side: "bottom",
-  },
-  {
     target: "add-text-button",
     tab: "documents",
-    title: "Add text",
+    title: "Add text documents",
     description:
-      "Paste a CV, job offer, or knowledge note directly into the app and index it as chunks with embeddings.",
+      "Paste a job offer, CV, or knowledge note and index it as chunks with OpenRouter embeddings.",
     side: "bottom",
   },
   {
     target: "import-pdf-button",
     tab: "documents",
-    title: "Import PDF",
+    title: "Import searchable PDFs",
     description:
-      "Upload a searchable PDF, extract its text, chunk it, embed it, and upsert the chunks into Qdrant.",
-    side: "bottom",
-  },
-  {
-    target: "documents-table",
-    tab: "documents",
-    title: "Documents table",
-    description:
-      "This table is built from Qdrant payloads and shows real indexed documents, their source type, chunks, and tags.",
-    side: "top",
-  },
-  {
-    target: "tab-search",
-    tab: "search",
-    title: "Semantic Search",
-    description:
-      "Search uses an embedding of your query to retrieve the most semantically similar chunks from Qdrant.",
+      "Upload a searchable PDF, extract text, chunk it, embed it, and upsert the chunks into Qdrant.",
     side: "bottom",
   },
   {
     target: "search-form",
     tab: "search",
-    title: "Search query and TopK",
+    title: "Semantic Search",
     description:
-      "Write the intent you want to find and choose how many chunks Qdrant should return.",
-    side: "bottom",
-  },
-  {
-    target: "search-button",
-    tab: "search",
-    title: "Run search",
-    description:
-      "This sends the query embedding to Qdrant and returns ranked chunks with similarity scores.",
+      "Search embeds your query and retrieves the most similar Qdrant chunks with scores.",
     side: "bottom",
   },
   {
@@ -137,35 +88,19 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "top",
   },
   {
-    target: "tab-chat",
+    target: "chat-form",
     tab: "chat",
     title: "RAG Chat",
     description:
-      "RAG first retrieves context chunks, then sends them with your question to the chat model.",
+      "Ask a question, choose retrieval depth, and generate an answer grounded in retrieved chunks.",
     side: "bottom",
   },
   {
-    target: "chat-form",
+    target: "rag-answer",
     tab: "chat",
-    title: "Question, prompt, TopK",
+    title: "Grounded answer",
     description:
-      "Choose a prompt version, set retrieval depth, and ask a question grounded in indexed documents.",
-    side: "bottom",
-  },
-  {
-    target: "chat-button",
-    tab: "chat",
-    title: "Ask",
-    description:
-      "The app runs search, builds a prompt with citations, and requests an answer from OpenRouter chat.",
-    side: "bottom",
-  },
-  {
-    target: "retrieved-context",
-    tab: "chat",
-    title: "Retrieved context",
-    description:
-      "This JSON preview makes the RAG pipeline inspectable: you can see exactly which chunks were used.",
+      "The answer and citations are the main output; raw retrieved JSON is available in advanced details.",
     side: "top",
   },
   {
@@ -177,44 +112,12 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "top",
   },
   {
-    target: "score-match-button",
-    tab: "chat",
-    title: "Score match",
-    description:
-      "This compares the selected documents and returns a 0-100 score, strengths, gaps, and a summary.",
-    side: "bottom",
-  },
-  {
-    target: "tab-evals",
-    tab: "evals",
-    title: "Evals",
-    description:
-      "Quick evals check whether retrieval finds the expected document for a small set of test queries.",
-    side: "bottom",
-  },
-  {
     target: "evals-form",
     tab: "evals",
-    title: "Eval setup",
+    title: "Retrieval quality check",
     description:
-      "Pick the expected document, source type, TopK, and one query per line for retrieval validation.",
+      "Choose an expected document and queries, then inspect Recall@K, MRR, pass rate, and latency.",
     side: "bottom",
-  },
-  {
-    target: "run-evals-button",
-    tab: "evals",
-    title: "Run evals",
-    description:
-      "The app searches for every query and calculates Recall@K, MRR, pass rate, and average latency.",
-    side: "bottom",
-  },
-  {
-    target: "evals-results",
-    tab: "evals",
-    title: "Eval results",
-    description:
-      "Results show whether the expected document appeared in TopK, at which rank, and how long retrieval took.",
-    side: "top",
   },
   {
     target: "tab-cv",
@@ -231,22 +134,6 @@ const TOUR_STEPS: ProductTourStep[] = [
     title: "CV PDF import",
     description:
       "This import is separate from Qdrant. It only extracts text for editing and keeps the draft in this browser.",
-    side: "bottom",
-  },
-  {
-    target: "cv-editor",
-    tab: "cv",
-    title: "Structured editor",
-    description:
-      "Edit personal info, summary, skills, experience, projects, education, certifications, and languages.",
-    side: "top",
-  },
-  {
-    target: "cv-ai",
-    tab: "cv",
-    title: "AI parse",
-    description:
-      "Optionally send the extracted CV text to OpenRouter to improve the structure of the editable draft.",
     side: "bottom",
   },
   {

@@ -2,6 +2,7 @@
 
 import {
   ActionIcon,
+  Accordion,
   Alert,
   AppShell,
   Badge,
@@ -20,6 +21,7 @@ import {
   Progress,
   Radio,
   Select,
+  SimpleGrid,
   Stack,
   Table,
   Tabs,
@@ -27,6 +29,7 @@ import {
   Text,
   TextInput,
   Textarea,
+  ThemeIcon,
   Title,
   Tooltip,
   useComputedColorScheme,
@@ -36,6 +39,7 @@ import { useMounted } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   Bot,
+  CheckCircle2,
   Database,
   Eye,
   EyeOff,
@@ -43,15 +47,17 @@ import {
   FileText,
   Gauge,
   HelpCircle,
+  ListChecks,
   Moon,
   Play,
   PlayCircle,
   RefreshCw,
   Search,
+  ShieldAlert,
   Sun,
   UploadCloud,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { readApiResponse } from "@/lib/api-response";
 import {
   defaultEmbeddingProfileId,
@@ -172,6 +178,7 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
       <AppShell.Main>
         <Container size="xl">
           <Tabs value={activeTab} onChange={handleTabChange} keepMounted={false}>
+            <DemoFlowPanel activeTab={activeTab} onNavigate={setActiveTab} />
             <Tabs.List mb="md">
               <Tabs.Tab value="documents" leftSection={<FileText size={16} />} data-tour="tab-documents">
                 Documents
@@ -202,13 +209,13 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               />
             </Tabs.Panel>
             <Tabs.Panel value="search">
-              <SearchPanel embeddingProfile={embeddingProfile} />
+              <SearchPanel embeddingProfile={embeddingProfile} onNavigate={setActiveTab} />
             </Tabs.Panel>
             <Tabs.Panel value="chat">
-              <ChatPanel embeddingProfile={embeddingProfile} />
+              <ChatPanel embeddingProfile={embeddingProfile} onNavigate={setActiveTab} />
             </Tabs.Panel>
             <Tabs.Panel value="evals">
-              <EvalsPanel embeddingProfile={embeddingProfile} />
+              <EvalsPanel embeddingProfile={embeddingProfile} onNavigate={setActiveTab} />
             </Tabs.Panel>
             <Tabs.Panel value="cv">
               <CvMakerPanel />
@@ -275,6 +282,163 @@ function GuideMenu({
   );
 }
 
+function DemoFlowPanel({
+  activeTab,
+  onNavigate,
+}: {
+  activeTab: TourTab;
+  onNavigate: (tab: TourTab) => void;
+}) {
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const documentCount = documents.length;
+  const hasDocuments = documentCount > 0;
+  const hasCv = documents.some((document) => document.sourceType === "cv");
+  const hasJob = documents.some((document) => document.sourceType === "job");
+  const hasMatchInputs = hasCv && hasJob;
+  const steps = [
+    {
+      cta: hasDocuments ? "Review corpus" : "Import docs",
+      detail: hasDocuments ? `${documentCount} indexed document(s)` : "Start with a CV PDF or job text",
+      done: hasDocuments,
+      label: "1. Documents",
+      tab: "documents" as TourTab,
+    },
+    {
+      cta: "Run search",
+      detail: hasDocuments ? "Validate vector retrieval" : "Needs indexed chunks first",
+      done: false,
+      disabled: !hasDocuments,
+      label: "2. Semantic Search",
+      tab: "search" as TourTab,
+    },
+    {
+      cta: "Ask RAG",
+      detail: hasDocuments ? "Generate grounded answer" : "Needs retrieved context",
+      done: false,
+      disabled: !hasDocuments,
+      label: "3. RAG Chat",
+      tab: "chat" as TourTab,
+    },
+    {
+      cta: "Run evals",
+      detail: hasDocuments ? "Check Recall@K and MRR" : "Needs expected document",
+      done: false,
+      disabled: !hasDocuments,
+      label: "4. Evals",
+      tab: "evals" as TourTab,
+    },
+    {
+      cta: "Score match",
+      detail: hasMatchInputs ? "CV and Job ready" : "Needs one CV and one Job",
+      done: hasMatchInputs,
+      disabled: !hasMatchInputs,
+      label: "5. CV-job match",
+      tab: "chat" as TourTab,
+    },
+  ];
+
+  const loadDocuments = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      setDocuments(await fetchDocumentInventory());
+    } catch {
+      setDocuments([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchDocumentInventory()
+      .then((nextDocuments) => {
+        if (isActive) {
+          setDocuments(nextDocuments);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setDocuments([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTab]);
+
+  return (
+    <Paper withBorder radius="md" p="md" mb="md" data-tour="demo-flow-panel">
+      <Stack gap="sm">
+        <Group justify="space-between" align="flex-start">
+          <Group gap="sm">
+            <ThemeIcon variant="light" size="lg" radius="md">
+              <ListChecks size={18} />
+            </ThemeIcon>
+            <div>
+              <Text fw={700}>Demo flow</Text>
+              <Text size="sm" c="dimmed">
+                Recommended path for showing the AI Engineer workflow end to end.
+              </Text>
+            </div>
+          </Group>
+          <Button
+            leftSection={<RefreshCw size={16} />}
+            loading={isLoading}
+            onClick={loadDocuments}
+            size="xs"
+            variant="default"
+          >
+            Refresh flow
+          </Button>
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }} spacing="xs">
+          {steps.map((step) => {
+            const isActive = activeTab === step.tab;
+            const color = step.done ? "green" : step.disabled ? "gray" : "blue";
+
+            return (
+              <Paper
+                key={step.label}
+                withBorder
+                radius="md"
+                p="sm"
+                bg={isActive ? "var(--mantine-color-blue-light)" : undefined}
+              >
+                <Stack gap={6}>
+                  <Group gap="xs" wrap="nowrap">
+                    <ThemeIcon color={color} variant="light" size="sm" radius="xl">
+                      {step.done ? <CheckCircle2 size={14} /> : <PlayCircle size={14} />}
+                    </ThemeIcon>
+                    <Text fw={700} size="sm" lineClamp={1}>
+                      {step.label}
+                    </Text>
+                  </Group>
+                  <Text size="xs" c="dimmed" mih={32}>
+                    {step.detail}
+                  </Text>
+                  <Button
+                    disabled={step.disabled}
+                    onClick={() => onNavigate(step.tab)}
+                    size="xs"
+                    variant={isActive ? "filled" : "light"}
+                  >
+                    {step.cta}
+                  </Button>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </SimpleGrid>
+      </Stack>
+    </Paper>
+  );
+}
+
 function DocumentsPanel({
   embeddingProfile,
   onEmbeddingProfileChange,
@@ -288,6 +452,7 @@ function DocumentsPanel({
   const [isAddingTextDocument, setIsAddingTextDocument] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isTextDocumentOpen, setIsTextDocumentOpen] = useState(false);
+  const [dangerAction, setDangerAction] = useState<"reset" | "importReplace" | "textReplace" | null>(null);
   const [ingestSummary, setIngestSummary] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<ImportResponse | null>(null);
   const [documentRows, setDocumentRows] = useState<IndexedDocument[]>([]);
@@ -390,6 +555,24 @@ function DocumentsPanel({
     }
   }
 
+  function requestImportDocument() {
+    if (!importFile) {
+      notifications.show({
+        title: "Import failed",
+        message: "Choose a PDF file first.",
+        color: "red",
+      });
+      return;
+    }
+
+    if (importMode === "replace") {
+      setDangerAction("importReplace");
+      return;
+    }
+
+    void handleImportDocument();
+  }
+
   async function handleImportDocument() {
     if (!importFile) {
       notifications.show({
@@ -441,6 +624,27 @@ function DocumentsPanel({
     } finally {
       setIsImporting(false);
     }
+  }
+
+  function requestAddTextDocument() {
+    const title = textTitle.trim();
+    const content = textContent.trim();
+
+    if (!title || !content) {
+      notifications.show({
+        title: "Text document failed",
+        message: "Provide both title and document content.",
+        color: "red",
+      });
+      return;
+    }
+
+    if (textMode === "replace") {
+      setDangerAction("textReplace");
+      return;
+    }
+
+    void handleAddTextDocument();
   }
 
   async function handleAddTextDocument() {
@@ -506,6 +710,26 @@ function DocumentsPanel({
     }
   }
 
+  function handleConfirmDangerAction() {
+    const action = dangerAction;
+
+    setDangerAction(null);
+
+    if (action === "reset") {
+      void handleResetCollection();
+      return;
+    }
+
+    if (action === "importReplace") {
+      void handleImportDocument();
+      return;
+    }
+
+    if (action === "textReplace") {
+      void handleAddTextDocument();
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group align="stretch" grow data-tour="documents-metrics">
@@ -543,7 +767,7 @@ function DocumentsPanel({
                 <Button
                   leftSection={<RefreshCw size={16} />}
                   loading={isResetting}
-                  onClick={handleResetCollection}
+                  onClick={() => setDangerAction("reset")}
                   variant="outline"
                 >
                   Reset collection
@@ -566,11 +790,18 @@ function DocumentsPanel({
             </Group>
           </Group>
           {selectedProfile ? (
-            <Alert color="blue" variant="light">
-              {selectedProfile.description} Model: <Code>{selectedProfile.model}</Code>, dimensions:{" "}
-              <Code>{selectedProfile.dimensions}</Code>. Use the same profile for all documents in one Qdrant
-              collection.
-            </Alert>
+            <Accordion variant="contained">
+              <Accordion.Item value="embedding-details">
+                <Accordion.Control>Advanced details: embedding model and vector dimensions</Accordion.Control>
+                <Accordion.Panel>
+                  <Alert color="blue" variant="light">
+                    {selectedProfile.description} Model: <Code>{selectedProfile.model}</Code>, dimensions:{" "}
+                    <Code>{selectedProfile.dimensions}</Code>. Use the same profile for all documents in one Qdrant
+                    collection.
+                  </Alert>
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
           ) : null}
           {ingestSummary ? (
             <Alert color="green" variant="light">
@@ -628,9 +859,29 @@ function DocumentsPanel({
                 ) : (
                   <Table.Tr>
                     <Table.Td colSpan={4}>
-                      <Text c="dimmed" size="sm">
-                        No documents indexed in Qdrant yet. Import a searchable PDF to start.
-                      </Text>
+                      <EmptyState
+                        icon={<FileText size={20} />}
+                        title="No documents indexed yet"
+                        description="Import a searchable CV PDF or add a pasted job offer to start the demo flow."
+                        actions={
+                          <>
+                            <Button size="xs" onClick={() => setIsImportOpen(true)}>
+                              Import CV PDF
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="default"
+                              onClick={() => {
+                                setTextSourceType("job");
+                                setTextTags(["job", "manual"]);
+                                setIsTextDocumentOpen(true);
+                              }}
+                            >
+                              Add job text
+                            </Button>
+                          </>
+                        }
+                      />
                     </Table.Td>
                   </Table.Tr>
                 )}
@@ -700,7 +951,7 @@ function DocumentsPanel({
             <Button
               disabled={!textTitle.trim() || !textContent.trim()}
               loading={isAddingTextDocument}
-              onClick={handleAddTextDocument}
+              onClick={requestAddTextDocument}
             >
               Add document
             </Button>
@@ -765,8 +1016,28 @@ function DocumentsPanel({
             <Button variant="default" onClick={() => setIsImportOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={!importFile} loading={isImporting} onClick={handleImportDocument}>
+            <Button disabled={!importFile} loading={isImporting} onClick={requestImportDocument}>
               Import PDF
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+      <Modal
+        centered
+        opened={dangerAction !== null}
+        onClose={() => setDangerAction(null)}
+        title="Confirm Qdrant collection change"
+      >
+        <Stack gap="md">
+          <Alert color="orange" icon={<ShieldAlert size={18} />} variant="light">
+            {getDangerActionMessage(dangerAction)}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDangerAction(null)}>
+              Cancel
+            </Button>
+            <Button color="orange" loading={isResetting || isImporting || isAddingTextDocument} onClick={handleConfirmDangerAction}>
+              Confirm
             </Button>
           </Group>
         </Stack>
@@ -775,7 +1046,13 @@ function DocumentsPanel({
   );
 }
 
-function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
+function SearchPanel({
+  embeddingProfile,
+  onNavigate,
+}: {
+  embeddingProfile: EmbeddingProfileId;
+  onNavigate: (tab: TourTab) => void;
+}) {
   const [query, setQuery] = useState(
     "AI engineer with RAG, vector search, Next.js and TypeScript experience",
   );
@@ -828,13 +1105,22 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
           <Group align="flex-end" data-tour="search-form">
             <Textarea
               label="Query"
+              description="Describe intent, skills, or evidence you want to retrieve from indexed chunks."
               autosize
               minRows={2}
               onChange={(event) => setQuery(event.currentTarget.value)}
               value={query}
               style={{ flex: 1 }}
             />
-            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+            <NumberInput
+              description="Chunks"
+              label="TopK"
+              min={1}
+              max={20}
+              onChange={setTopK}
+              value={topK}
+              w={110}
+            />
             <Button
               leftSection={<Search size={16} />}
               loading={isSearching}
@@ -865,9 +1151,21 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
                 </Paper>
               ))
             ) : (
-              <Alert color="blue" variant="light">
-                Import a document, then run semantic search to see retrieved Qdrant chunks here.
-              </Alert>
+              <EmptyState
+                icon={<Search size={20} />}
+                title="Search results will appear here"
+                description="Index a CV, job offer, or knowledge note, then run a semantic query to inspect Qdrant ranking."
+                actions={
+                  <>
+                    <Button size="xs" onClick={handleSearch} loading={isSearching}>
+                      Run first search
+                    </Button>
+                    <Button size="xs" variant="default" onClick={() => onNavigate("documents")}>
+                      Go to Documents
+                    </Button>
+                  </>
+                }
+              />
             )}
           </Stack>
         </Stack>
@@ -876,7 +1174,13 @@ function SearchPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileI
   );
 }
 
-function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
+function ChatPanel({
+  embeddingProfile,
+  onNavigate,
+}: {
+  embeddingProfile: EmbeddingProfileId;
+  onNavigate: (tab: TourTab) => void;
+}) {
   const [question, setQuestion] = useState("What does this document say about RAG and vector search?");
   const [promptVersion, setPromptVersion] = useState<PromptVersion>("rag_strict_v2");
   const [topK, setTopK] = useState<number | string>(5);
@@ -1025,6 +1329,7 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
           <Group align="flex-end" data-tour="chat-form">
             <Textarea
               label="Question"
+              description="Ask a question that should be answered from indexed documents, not model memory."
               autosize
               minRows={2}
               onChange={(event) => setQuestion(event.currentTarget.value)}
@@ -1033,12 +1338,21 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
             />
             <Select
               label="Prompt"
+              description="Prompt version"
               onChange={(value) => setPromptVersion((value as PromptVersion | null) ?? "rag_strict_v2")}
               value={promptVersion}
               data={ragPromptOptions}
               w={190}
             />
-            <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+            <NumberInput
+              description="Chunks"
+              label="TopK"
+              min={1}
+              max={20}
+              onChange={setTopK}
+              value={topK}
+              w={110}
+            />
             <Button
               leftSection={<Bot size={16} />}
               loading={isAsking}
@@ -1048,31 +1362,70 @@ function ChatPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId 
               Ask
             </Button>
           </Group>
-          <Alert color="blue" variant="light" title={chatResponse ? "RAG answer" : "No answer yet"}>
-            {chatResponse?.answer ??
-              "Ask a question after indexing documents. The answer will be grounded in retrieved Qdrant chunks."}
-          </Alert>
-          {chatResponse ? (
-            <Group gap="xs">
-              <Badge variant="light" color="violet">
-                {chatResponse.model}
-              </Badge>
-              <Badge variant="light" color="gray">
-                {chatResponse.latencyMs} ms
-              </Badge>
-              <Badge variant="light" color="blue">
-                {chatResponse.retrievedChunks.length} chunks
-              </Badge>
-            </Group>
-          ) : null}
-          <JsonInput
-            label="Retrieved context"
-            autosize
-            data-tour="retrieved-context"
-            minRows={7}
-            value={JSON.stringify(chatResponse?.retrievedChunks ?? [], null, 2)}
-            readOnly
-          />
+          <Paper withBorder radius="md" p="md" data-tour="rag-answer">
+            {chatResponse ? (
+              <Stack gap="sm">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Text fw={700}>RAG answer</Text>
+                    <Text size="sm" c="dimmed">
+                      Grounded response with citations from retrieved chunks.
+                    </Text>
+                  </div>
+                  <Group gap="xs">
+                    <Badge variant="light" color="violet">
+                      {chatResponse.model}
+                    </Badge>
+                    <Badge variant="light" color="gray">
+                      {formatLatency(chatResponse.latencyMs)}
+                    </Badge>
+                    <Badge variant="light" color="blue">
+                      {chatResponse.retrievedChunks.length} chunks
+                    </Badge>
+                  </Group>
+                </Group>
+                <Text>{chatResponse.answer}</Text>
+                <Group gap="xs">
+                  {chatResponse.citations.map((citation) => (
+                    <Badge key={citation.id} variant="light" color="gray">
+                      {citation.title} · chunk {citation.chunkIndex + 1}
+                    </Badge>
+                  ))}
+                </Group>
+              </Stack>
+            ) : (
+              <EmptyState
+                icon={<Bot size={20} />}
+                title="Ask a grounded RAG question"
+                description="After indexing documents, ask a question and inspect both the answer and the exact chunks used as context."
+                actions={
+                  <>
+                    <Button size="xs" onClick={handleAsk} loading={isAsking}>
+                      Ask now
+                    </Button>
+                    <Button size="xs" variant="default" onClick={() => onNavigate("documents")}>
+                      Import documents
+                    </Button>
+                  </>
+                }
+              />
+            )}
+          </Paper>
+          <Accordion variant="separated">
+            <Accordion.Item value="retrieved-context">
+              <Accordion.Control>Advanced details: retrieved context JSON</Accordion.Control>
+              <Accordion.Panel>
+                <JsonInput
+                  label="Retrieved context"
+                  autosize
+                  data-tour="retrieved-context"
+                  minRows={7}
+                  value={JSON.stringify(chatResponse?.retrievedChunks ?? [], null, 2)}
+                  readOnly
+                />
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
         </Stack>
       </Card>
       <Card withBorder radius="md" padding="lg" data-tour="match-card">
@@ -1178,7 +1531,13 @@ function MatchScoreResult({ result }: { result: MatchResponse }) {
   );
 }
 
-function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId }) {
+function EvalsPanel({
+  embeddingProfile,
+  onNavigate,
+}: {
+  embeddingProfile: EmbeddingProfileId;
+  onNavigate: (tab: TourTab) => void;
+}) {
   const [targetTitle, setTargetTitle] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<SourceType>("cv");
   const [queries, setQueries] = useState(
@@ -1330,6 +1689,7 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
               <Select
                 data={documentOptions}
                 label="Expected document"
+                description="Document that should appear in TopK"
                 onChange={setTargetTitle}
                 placeholder="Choose indexed document"
                 searchable
@@ -1339,14 +1699,24 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
               <Select
                 data={sourceTypeSelectData}
                 label="Source type"
+                description="Filter inventory"
                 onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
                 value={sourceType}
                 w={160}
               />
-              <NumberInput label="TopK" min={1} max={20} onChange={setTopK} value={topK} w={110} />
+              <NumberInput
+                description="Retrieval depth"
+                label="TopK"
+                min={1}
+                max={20}
+                onChange={setTopK}
+                value={topK}
+                w={130}
+              />
             </Group>
             <Textarea
               label="Queries"
+              description="One query per line. Each query should represent evidence you expect in the selected document."
               autosize
               minRows={3}
               onChange={(event) => setQueries(event.currentTarget.value)}
@@ -1355,23 +1725,12 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
           </Stack>
           {run ? (
             <Stack gap="md" data-tour="evals-results">
-              <Group gap="xs">
-                <Badge variant="light" color="violet">
-                  {run.model}
-                </Badge>
-                <Badge variant="light" color="blue">
-                  Recall@K {run.recallAtK.toFixed(2)}
-                </Badge>
-                <Badge variant="light" color="teal">
-                  MRR {run.mrr.toFixed(2)}
-                </Badge>
-                <Badge variant="light" color={run.passRate >= 80 ? "green" : "yellow"}>
-                  Pass rate {Math.round(run.passRate)}%
-                </Badge>
-                <Badge variant="light" color="gray">
-                  {formatLatency(run.averageLatencyMs)}
-                </Badge>
-              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
+                <MetricCard label="Recall@K" value={run.recallAtK.toFixed(2)} detail="expected document found" />
+                <MetricCard label="MRR" value={run.mrr.toFixed(2)} detail="rank quality" />
+                <MetricCard label="Pass rate" value={`${Math.round(run.passRate)}%`} detail="queries passed" />
+                <MetricCard label="Latency" value={formatLatency(run.averageLatencyMs)} detail={run.model} />
+              </SimpleGrid>
               <Progress value={run.passRate} color={run.passRate >= 80 ? "green" : "yellow"} />
               <Table.ScrollContainer minWidth={760}>
                 <Table verticalSpacing="sm">
@@ -1407,9 +1766,23 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
               </Table.ScrollContainer>
             </Stack>
           ) : (
-            <Alert color="blue" variant="light" data-tour="evals-results">
-              Import a searchable PDF or add a document, choose it here, then run one query per line.
-            </Alert>
+            <div data-tour="evals-results">
+              <EmptyState
+                icon={<Gauge size={20} />}
+                title="Run a retrieval quality check"
+                description="Choose the expected document and test whether representative queries retrieve it in TopK."
+                actions={
+                  <>
+                    <Button size="xs" onClick={handleRunPdfEvals} loading={isRunning}>
+                      Run evals
+                    </Button>
+                    <Button size="xs" variant="default" onClick={() => onNavigate("documents")}>
+                      Add documents
+                    </Button>
+                  </>
+                }
+              />
+            </div>
           )}
         </Stack>
       </Card>
@@ -1419,7 +1792,7 @@ function EvalsPanel({ embeddingProfile }: { embeddingProfile: EmbeddingProfileId
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <Card withBorder radius="md" padding="lg">
+    <Paper withBorder radius="md" p="lg">
       <Text size="sm" c="dimmed">
         {label}
       </Text>
@@ -1429,7 +1802,40 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
       <Text size="sm" c="dimmed" mt={2}>
         {detail}
       </Text>
-    </Card>
+    </Paper>
+  );
+}
+
+function EmptyState({
+  actions,
+  description,
+  icon,
+  title,
+}: {
+  actions?: ReactNode;
+  description: string;
+  icon: ReactNode;
+  title: string;
+}) {
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group align="flex-start" gap="md">
+        <ThemeIcon variant="light" size="xl" radius="md">
+          {icon}
+        </ThemeIcon>
+        <Stack gap={8} style={{ flex: 1 }}>
+          <Text fw={700}>{title}</Text>
+          <Text c="dimmed" size="sm">
+            {description}
+          </Text>
+          {actions ? (
+            <Group gap="xs" mt={4}>
+              {actions}
+            </Group>
+          ) : null}
+        </Stack>
+      </Group>
+    </Paper>
   );
 }
 
@@ -1485,6 +1891,22 @@ function createManualDocumentId(title: string, sourceType: SourceType) {
     .replace(/^-|-$/g, "");
 
   return `manual-${sourceType}-${slug || "document"}-${Date.now()}`;
+}
+
+function getDangerActionMessage(action: "reset" | "importReplace" | "textReplace" | null) {
+  if (action === "reset") {
+    return "Reset collection recreates the Qdrant collection for the selected embedding profile. Existing indexed chunks will be removed.";
+  }
+
+  if (action === "importReplace") {
+    return "Replace all resets the Qdrant collection before importing this PDF. Current indexed documents will no longer be searchable.";
+  }
+
+  if (action === "textReplace") {
+    return "Replace all resets the Qdrant collection before indexing this text document. Current indexed documents will no longer be searchable.";
+  }
+
+  return "This action changes the Qdrant collection.";
 }
 
 type DocumentsResponse = {

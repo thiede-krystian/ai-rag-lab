@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Accordion,
   Alert,
   Badge,
   Button,
@@ -10,6 +11,7 @@ import {
   FileInput,
   Group,
   Modal,
+  Paper,
   Select,
   SimpleGrid,
   Stack,
@@ -17,12 +19,14 @@ import {
   Text,
   TextInput,
   Textarea,
+  ThemeIcon,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   Download,
   FileDown,
+  CheckCircle2,
   Plus,
   Sparkles,
   Trash2,
@@ -31,7 +35,7 @@ import {
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { readApiResponse } from "@/lib/api-response";
-import { createEmptyCvDraft, normalizeCvDraft } from "@/lib/cv/draft";
+import { createEmptyCvDraft, hasCvContent, normalizeCvDraft } from "@/lib/cv/draft";
 import { cvDraftToMarkdown } from "@/lib/cv/markdown";
 import { DEFAULT_CV_TEMPLATE, cvTemplateOptions, normalizeCvTemplateId } from "@/lib/cv/templates";
 import { CV_MAKER_STORAGE_KEY, type CvDraft, type CvTemplateId } from "@/lib/cv/types";
@@ -258,8 +262,12 @@ export function CvMakerPanel() {
     });
   }
 
+  const hasImportedSource = Boolean(sourceText.trim());
+  const hasStructuredDraft = hasCvContent(draft);
+
   return (
     <Stack gap="md">
+      <CvWorkflowSteps hasImportedSource={hasImportedSource} hasStructuredDraft={hasStructuredDraft} />
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
         <Card withBorder radius="md" padding="lg" data-tour="cv-import">
           <Stack gap="md">
@@ -302,18 +310,25 @@ export function CvMakerPanel() {
               The first pass uses local layout-aware heuristics. Use AI parsing only if you want to send the
               extracted CV text to OpenRouter for better structure.
             </Alert>
-            <Textarea
-              autosize
-              label="Extracted text preview"
-              minRows={10}
-              placeholder="Extracted CV text will appear here after PDF import"
-              readOnly
-              value={sourceText}
-            />
+            <Accordion variant="contained">
+              <Accordion.Item value="source-text">
+                <Accordion.Control>Advanced details: extracted text preview</Accordion.Control>
+                <Accordion.Panel>
+                  <Textarea
+                    autosize
+                    label="Extracted text preview"
+                    minRows={10}
+                    placeholder="Extracted CV text will appear here after PDF import"
+                    readOnly
+                    value={sourceText}
+                  />
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
           </Stack>
         </Card>
 
-        <Card withBorder radius="md" padding="lg" data-tour="cv-export">
+        <Card withBorder radius="md" padding="lg" data-tour="cv-export" style={{ alignSelf: "start" }}>
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
               <div>
@@ -336,10 +351,16 @@ export function CvMakerPanel() {
               value={template}
             />
             <Group>
-              <Button leftSection={<Download size={16} />} onClick={handleDownloadMarkdown} variant="default">
+              <Button
+                disabled={!hasStructuredDraft}
+                leftSection={<Download size={16} />}
+                onClick={handleDownloadMarkdown}
+                variant="default"
+              >
                 Download MD
               </Button>
               <Button
+                disabled={!hasStructuredDraft}
                 leftSection={<FileDown size={16} />}
                 loading={isExportingPdf}
                 onClick={handleDownloadPdf}
@@ -373,102 +394,134 @@ export function CvMakerPanel() {
             <Badge variant="light">{draft.experience.length} experience items</Badge>
           </Group>
 
-          <Fieldset legend="Personal info">
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-              <TextInput
-                label="Name"
-                onChange={(event) => updatePersonal("name", event.currentTarget.value)}
-                value={draft.personal.name}
-              />
-              <TextInput
-                label="Headline"
-                onChange={(event) => updatePersonal("headline", event.currentTarget.value)}
-                value={draft.personal.headline}
-              />
-              <TextInput
-                label="Email"
-                onChange={(event) => updatePersonal("email", event.currentTarget.value)}
-                value={draft.personal.email}
-              />
-              <TextInput
-                label="Phone"
-                onChange={(event) => updatePersonal("phone", event.currentTarget.value)}
-                value={draft.personal.phone}
-              />
-              <TextInput
-                label="Location"
-                onChange={(event) => updatePersonal("location", event.currentTarget.value)}
-                value={draft.personal.location}
-              />
-              <TextInput
-                label="Website"
-                onChange={(event) => updatePersonal("website", event.currentTarget.value)}
-                value={draft.personal.website}
-              />
-            </SimpleGrid>
-            <TagsInput
-              label="Links"
-              mt="sm"
-              onChange={(links) =>
-                setDraft((current) => ({
-                  ...current,
-                  personal: {
-                    ...current.personal,
-                    links: links.map((url) => ({ label: getLinkLabel(url), url })),
-                  },
-                }))
-              }
-              placeholder="Add LinkedIn, GitHub, portfolio"
-              value={draft.personal.links.map((link) => link.url)}
-            />
-          </Fieldset>
+          <Accordion multiple defaultValue={["basics", "experience"]} variant="separated">
+            <Accordion.Item value="basics">
+              <Accordion.Control>Step 2: personal info, summary and skills</Accordion.Control>
+              <Accordion.Panel>
+                <Stack gap="md">
+                  <Fieldset legend="Personal info">
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                      <TextInput
+                        label="Name"
+                        onChange={(event) => updatePersonal("name", event.currentTarget.value)}
+                        value={draft.personal.name}
+                      />
+                      <TextInput
+                        label="Headline"
+                        onChange={(event) => updatePersonal("headline", event.currentTarget.value)}
+                        value={draft.personal.headline}
+                      />
+                      <TextInput
+                        label="Email"
+                        onChange={(event) => updatePersonal("email", event.currentTarget.value)}
+                        value={draft.personal.email}
+                      />
+                      <TextInput
+                        label="Phone"
+                        onChange={(event) => updatePersonal("phone", event.currentTarget.value)}
+                        value={draft.personal.phone}
+                      />
+                      <TextInput
+                        label="Location"
+                        onChange={(event) => updatePersonal("location", event.currentTarget.value)}
+                        value={draft.personal.location}
+                      />
+                      <TextInput
+                        label="Website"
+                        onChange={(event) => updatePersonal("website", event.currentTarget.value)}
+                        value={draft.personal.website}
+                      />
+                    </SimpleGrid>
+                    <TagsInput
+                      label="Links"
+                      mt="sm"
+                      onChange={(links) =>
+                        setDraft((current) => ({
+                          ...current,
+                          personal: {
+                            ...current.personal,
+                            links: links.map((url) => ({ label: getLinkLabel(url), url })),
+                          },
+                        }))
+                      }
+                      placeholder="Add LinkedIn, GitHub, portfolio"
+                      value={draft.personal.links.map((link) => link.url)}
+                    />
+                  </Fieldset>
 
-          <Fieldset legend="Summary">
-            <Textarea
-              autosize
-              minRows={4}
-              onChange={(event) => setDraft((current) => ({ ...current, summary: event.currentTarget.value }))}
-              value={draft.summary}
-            />
-          </Fieldset>
+                  <Fieldset legend="Summary">
+                    <Textarea
+                      autosize
+                      minRows={4}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, summary: event.currentTarget.value }))
+                      }
+                      value={draft.summary}
+                    />
+                  </Fieldset>
 
-          <Fieldset legend="Aspirations">
-            <Textarea
-              autosize
-              minRows={3}
-              onChange={(event) => setDraft((current) => ({ ...current, aspirations: event.currentTarget.value }))}
-              value={draft.aspirations}
-            />
-          </Fieldset>
+                  <Fieldset legend="Aspirations">
+                    <Textarea
+                      autosize
+                      minRows={3}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, aspirations: event.currentTarget.value }))
+                      }
+                      value={draft.aspirations}
+                    />
+                  </Fieldset>
 
-          <Fieldset legend="Skills">
-            <TagsInput
-              onChange={(skills) => setDraft((current) => ({ ...current, skills }))}
-              placeholder="Add skill"
-              value={draft.skills}
-            />
-          </Fieldset>
+                  <Fieldset legend="Skills">
+                    <TagsInput
+                      onChange={(skills) => setDraft((current) => ({ ...current, skills }))}
+                      placeholder="Add skill"
+                      value={draft.skills}
+                    />
+                  </Fieldset>
 
-          <EditableExperienceSection draft={draft} setDraft={setDraft} />
-          <EditableProjectsSection draft={draft} setDraft={setDraft} />
-          <EditableEducationSection draft={draft} setDraft={setDraft} />
+                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                    <Fieldset legend="Certifications">
+                      <TagsInput
+                        onChange={(certifications) =>
+                          setDraft((current) => ({ ...current, certifications }))
+                        }
+                        placeholder="Add certification"
+                        value={draft.certifications}
+                      />
+                    </Fieldset>
+                    <Fieldset legend="Languages">
+                      <TagsInput
+                        onChange={(languages) => setDraft((current) => ({ ...current, languages }))}
+                        placeholder="Add language"
+                        value={draft.languages}
+                      />
+                    </Fieldset>
+                  </SimpleGrid>
+                </Stack>
+              </Accordion.Panel>
+            </Accordion.Item>
 
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-            <Fieldset legend="Certifications">
-              <TagsInput
-                onChange={(certifications) => setDraft((current) => ({ ...current, certifications }))}
-                placeholder="Add certification"
-                value={draft.certifications}
-              />
-            </Fieldset>
-            <Fieldset legend="Languages">
-              <TagsInput
-                onChange={(languages) => setDraft((current) => ({ ...current, languages }))}
-                placeholder="Add language"
-                value={draft.languages}
-              />
-            </Fieldset>
-          </SimpleGrid>
+            <Accordion.Item value="experience">
+              <Accordion.Control>Step 2: experience ({draft.experience.length})</Accordion.Control>
+              <Accordion.Panel>
+                <EditableExperienceSection draft={draft} setDraft={setDraft} />
+              </Accordion.Panel>
+            </Accordion.Item>
+
+            <Accordion.Item value="projects">
+              <Accordion.Control>Step 2: projects ({draft.projects.length})</Accordion.Control>
+              <Accordion.Panel>
+                <EditableProjectsSection draft={draft} setDraft={setDraft} />
+              </Accordion.Panel>
+            </Accordion.Item>
+
+            <Accordion.Item value="education">
+              <Accordion.Control>Step 2: education ({draft.education.length})</Accordion.Control>
+              <Accordion.Panel>
+                <EditableEducationSection draft={draft} setDraft={setDraft} />
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
         </Stack>
       </Card>
 
@@ -597,6 +650,62 @@ function EditableExperienceSection({
       experience: current.experience.filter((_, itemIndex) => itemIndex !== index),
     }));
   }
+}
+
+function CvWorkflowSteps({
+  hasImportedSource,
+  hasStructuredDraft,
+}: {
+  hasImportedSource: boolean;
+  hasStructuredDraft: boolean;
+}) {
+  return (
+    <Paper withBorder radius="md" p="md">
+      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+        <CvWorkflowStep
+          done={hasImportedSource}
+          label="1. Import"
+          detail="Upload a searchable PDF and extract text locally."
+        />
+        <CvWorkflowStep
+          done={hasStructuredDraft}
+          label="2. Edit"
+          detail="Review structured fields, skills, experience, projects and education."
+        />
+        <CvWorkflowStep
+          done={hasStructuredDraft}
+          label="3. Export"
+          detail="Download a regenerated PDF or Markdown CV."
+        />
+      </SimpleGrid>
+    </Paper>
+  );
+}
+
+function CvWorkflowStep({
+  detail,
+  done,
+  label,
+}: {
+  detail: string;
+  done: boolean;
+  label: string;
+}) {
+  return (
+    <Group gap="sm" wrap="nowrap" align="flex-start">
+      <ThemeIcon color={done ? "green" : "gray"} variant="light" radius="xl">
+        <CheckCircle2 size={16} />
+      </ThemeIcon>
+      <div>
+        <Text fw={700} size="sm">
+          {label}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {detail}
+        </Text>
+      </div>
+    </Group>
+  );
 }
 
 function EditableProjectsSection({
