@@ -1,5 +1,5 @@
 import { createEmptyCvDraft, normalizeCvDraft } from "@/lib/cv/draft";
-import type { CvDraft, CvExperienceItem } from "@/lib/cv/types";
+import type { CvDraft, CvExperienceItem, CvProjectItem } from "@/lib/cv/types";
 
 type SectionKey =
   | "summary"
@@ -8,23 +8,32 @@ type SectionKey =
   | "projects"
   | "education"
   | "certifications"
-  | "languages";
+  | "languages"
+  | "aspirations";
 
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const phonePattern = /(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3}[\s-]?\d{3,4}[\s-]?\d{0,4}/;
-const urlPattern = /(https?:\/\/[^\s]+|(?:linkedin|github)\.com\/[^\s]+)/gi;
-const periodPattern =
-  /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[\w\s.,-]*(?:present|current|now|\d{4})?)/i;
+const urlPattern = /(https?:\/\/[^\s]+|(?:linkedin|github)\.com\/[^\s]+|[a-z0-9-]+\.[a-z]{2,}[^\s]*)/i;
+const urlGlobalPattern = /(https?:\/\/[^\s]+|(?:linkedin|github)\.com\/[^\s]+|[a-z0-9-]+\.[a-z]{2,}[^\s]*)/gi;
+const monthPattern =
+  "(?:Jan|January|Feb|February|Mar|March|Apr|April|May|Jun|June|Jul|July|Aug|August|Sep|Sept|September|Oct|October|Nov|November|Dec|December)\\.?";
+const periodPattern = new RegExp(
+  `((?:(?:${monthPattern})\\s+)?\\d{4}\\s*-\\s*(?:(?:(?:${monthPattern})\\s+)?\\d{4}|present|current|now))`,
+  "i",
+);
 
 const sectionAliases: Record<SectionKey, string[]> = {
-  summary: ["summary", "profile", "about", "professional summary", "career profile"],
-  skills: ["skills", "technical skills", "technologies", "tech stack", "core skills"],
+  summary: ["summary", "profile", "about", "about me", "professional summary", "career profile"],
+  skills: ["skills", "tags | skills", "tags skills", "technical skills", "technologies", "tech stack", "core skills"],
   experience: ["experience", "work experience", "professional experience", "employment", "history"],
-  projects: ["projects", "selected projects", "portfolio"],
+  projects: ["projects", "my projects", "selected projects", "portfolio"],
   education: ["education", "academic background"],
   certifications: ["certifications", "certificates", "courses"],
   languages: ["languages", "language"],
+  aspirations: ["aspirations", "career aspirations"],
 };
+
+const ignoredHeadlineLines = new Set(["address", "signal | call", "call", "email", "linkedin", "links"]);
 
 export function parseCvTextToDraft(text: string): CvDraft {
   const lines = normalizeLines(text);
@@ -38,13 +47,14 @@ export function parseCvTextToDraft(text: string): CvDraft {
     name: findCandidateName(lines),
     headline: findHeadline(lines),
   };
-  draft.summary = parseSummary(sections.summary, lines);
+  draft.summary = parseParagraph(sections.summary) || parseSummaryFallback(lines);
   draft.skills = parseListSection(sections.skills);
   draft.experience = parseExperience(sections.experience);
   draft.projects = parseProjects(sections.projects);
   draft.education = parseEducation(sections.education);
   draft.certifications = parseListSection(sections.certifications);
   draft.languages = parseListSection(sections.languages);
+  draft.aspirations = parseParagraph(sections.aspirations);
 
   return normalizeCvDraft(draft);
 }
@@ -53,7 +63,7 @@ function normalizeLines(text: string) {
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => line.trim())
+    .map(cleanLine)
     .filter(Boolean);
 }
 
@@ -66,6 +76,7 @@ function collectSections(lines: string[]) {
     education: [],
     certifications: [],
     languages: [],
+    aspirations: [],
   };
   let current: SectionKey | null = null;
 
@@ -86,7 +97,7 @@ function collectSections(lines: string[]) {
 }
 
 function matchSectionHeading(line: string): SectionKey | null {
-  const normalized = line.toLowerCase().replace(/[:\s]+$/g, "");
+  const normalized = normalizeHeading(line);
 
   if (normalized.length > 40) {
     return null;
@@ -102,14 +113,19 @@ function matchSectionHeading(line: string): SectionKey | null {
 }
 
 function parseContact(lines: string[]) {
-  const joined = lines.join(" ");
+  const contactLines = getContactLines(lines);
+  const joined = contactLines.join(" ");
   const email = joined.match(emailPattern)?.[0] ?? "";
   const phone = joined.match(phonePattern)?.[0] ?? "";
-  const urls = [...joined.matchAll(urlPattern)].map((match) => match[0].replace(/[),.]+$/g, ""));
+  const urls = [...joined.matchAll(urlGlobalPattern)]
+    .filter((match) => match.index === undefined || joined[match.index - 1] !== "@")
+    .map((match) => match[0].replace(/[),.]+$/g, ""))
+    .filter((url) => !emailPattern.test(url));
 
   return {
     email,
     phone,
+    location: parseLocation(contactLines),
     website: urls.find((url) => !url.includes("linkedin.") && !url.includes("github.")) ?? "",
     links: urls.map((url) => ({
       label: getLinkLabel(url),
@@ -118,56 +134,111 @@ function parseContact(lines: string[]) {
   };
 }
 
+function getContactLines(lines: string[]) {
+  const firstSectionIndex = lines.findIndex((line) => Boolean(matchSectionHeading(line)));
+
+  return lines.slice(0, firstSectionIndex < 0 ? Math.min(lines.length, 16) : firstSectionIndex);
+}
+
+function parseLocation(lines: string[]) {
+  const addressIndex = lines.findIndex((line) => normalizeHeading(line) === "address");
+
+  if (addressIndex >= 0) {
+    return lines[addressIndex + 1] ?? "";
+  }
+
+  return lines.find((line) => /\b(?:poland|germany|remote|usa|uk)\b/i.test(line) && line.length < 80) ?? "";
+}
+
 function findCandidateName(lines: string[]) {
-  return (
-    lines.find(
-      (line) =>
-        line.length <= 70 &&
-        !emailPattern.test(line) &&
-        !phonePattern.test(line) &&
-        !urlPattern.test(line) &&
-        !matchSectionHeading(line) &&
-        /[A-Za-z]/.test(line),
-    ) ?? ""
-  );
+  const candidate = getNameCandidate(lines);
+
+  return candidate?.name ?? "";
 }
 
 function findHeadline(lines: string[]) {
-  const name = findCandidateName(lines);
-  const index = lines.indexOf(name);
-
-  if (index < 0) {
-    return "";
-  }
+  const candidate = getNameCandidate(lines);
+  const start = candidate ? candidate.startIndex + candidate.lineCount : 0;
 
   return (
     lines
-      .slice(index + 1, index + 4)
+      .slice(start, start + 5)
       .find(
         (line) =>
-          line.length <= 110 && !emailPattern.test(line) && !phonePattern.test(line) && !urlPattern.test(line),
+          line.length <= 110 &&
+          !emailPattern.test(line) &&
+          !phonePattern.test(line) &&
+          !urlPattern.test(line) &&
+          !matchSectionHeading(line) &&
+          !ignoredHeadlineLines.has(normalizeHeading(line)),
       ) ?? ""
   );
 }
 
-function parseSummary(summaryLines: string[], allLines: string[]) {
-  if (summaryLines.length > 0) {
-    return summaryLines.slice(0, 4).join(" ");
+function getNameCandidate(lines: string[]) {
+  for (let index = 0; index < Math.min(lines.length, 5); index += 1) {
+    const line = lines[index];
+    const next = lines[index + 1] ?? "";
+
+    if (!isPotentialNameLine(line)) {
+      continue;
+    }
+
+    if (next && isUppercaseNamePart(next)) {
+      return {
+        name: toTitleCase(`${line} ${next}`),
+        startIndex: index,
+        lineCount: 2,
+      };
+    }
+
+    return {
+      name: toTitleCase(line),
+      startIndex: index,
+      lineCount: 1,
+    };
   }
 
-  return allLines
+  return null;
+}
+
+function isPotentialNameLine(line: string) {
+  return (
+    line.length <= 70 &&
+    /[A-Za-z]/.test(line) &&
+    !emailPattern.test(line) &&
+    !phonePattern.test(line) &&
+    !urlPattern.test(line) &&
+    !matchSectionHeading(line) &&
+    !ignoredHeadlineLines.has(normalizeHeading(line))
+  );
+}
+
+function isUppercaseNamePart(line: string) {
+  return /^[A-Z][A-Z\s'-]{1,40}$/.test(line);
+}
+
+function parseSummaryFallback(allLines: string[]) {
+  const candidate = allLines
     .filter((line) => !emailPattern.test(line) && !phonePattern.test(line) && !urlPattern.test(line))
     .filter((line) => !matchSectionHeading(line))
-    .slice(2, 5)
-    .join(" ");
+    .filter((line) => !ignoredHeadlineLines.has(normalizeHeading(line)))
+    .slice(2, 6);
+
+  return parseParagraph(candidate);
+}
+
+function parseParagraph(lines: string[]) {
+  return lines.map(cleanBullet).join(" ").replace(/\s{2,}/g, " ").trim();
 }
 
 function parseListSection(lines: string[]) {
-  return lines
-    .flatMap((line) => line.split(/,|;|\s\|\s/))
-    .map((value) => value.replace(/^[-*•]\s*/, "").trim())
-    .filter(Boolean)
-    .filter((value, index, values) => values.indexOf(value) === index);
+  return unique(
+    lines
+      .flatMap((line) => cleanBullet(line).split(/,|;|\s\|\s/))
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
 }
 
 function parseExperience(lines: string[]): CvExperienceItem[] {
@@ -175,17 +246,39 @@ function parseExperience(lines: string[]): CvExperienceItem[] {
   let current: CvExperienceItem | null = null;
 
   for (const line of lines) {
+    if (isPeriodLine(line) && current) {
+      current.period = line;
+      continue;
+    }
+
+    if (isJobHeading(line)) {
+      if (current) {
+        entries.push(current);
+      }
+
+      current = createExperienceFromHeading(line);
+      continue;
+    }
+
     if (isBulletLine(line)) {
       current ??= createExperienceFromHeading("");
       current.bullets.push(cleanBullet(line));
       continue;
     }
 
-    if (current) {
-      entries.push(current);
+    if (isInlineSubheading(line) && current) {
+      current.bullets.push(line);
+      continue;
     }
 
-    current = createExperienceFromHeading(line);
+    if (current?.bullets.length) {
+      appendToLastBullet(current, line);
+      continue;
+    }
+
+    if (!current && line.length <= 120) {
+      current = createExperienceFromHeading(line);
+    }
   }
 
   if (current) {
@@ -198,7 +291,7 @@ function parseExperience(lines: string[]): CvExperienceItem[] {
 function createExperienceFromHeading(line: string): CvExperienceItem {
   const period = line.match(periodPattern)?.[0] ?? "";
   const heading = period ? line.replace(period, "").replace(/[-|,]+$/g, "").trim() : line;
-  const [role, company = ""] = heading.split(/\s+(?:at|@|\||-)\s+/i, 2);
+  const [role, company = ""] = heading.split(/(?:\s+\/\s*|\s*@\s*|\s*\|\s*|\s+\bat\b\s+)/i, 2);
 
   return {
     role: role?.trim() ?? "",
@@ -210,34 +303,157 @@ function createExperienceFromHeading(line: string): CvExperienceItem {
 }
 
 function parseProjects(lines: string[]) {
-  return lines.map((line) => ({
-    name: line.replace(/^[-*•]\s*/, "").split(/[-|:]/)[0]?.trim() ?? line,
-    description: line.replace(/^[-*•]\s*/, "").trim(),
-    technologies: extractTechnologies(line),
-  }));
+  const projects: CvProjectItem[] = [];
+  let current: CvProjectItem | null = null;
+
+  lines.forEach((line, index) => {
+    const next = lines[index + 1] ?? "";
+
+    if (isProjectHeading(line, next, current)) {
+      if (current) {
+        projects.push(current);
+      }
+
+      current = {
+        name: cleanBullet(line),
+        description: "",
+        technologies: [],
+      };
+      return;
+    }
+
+    current ??= {
+      name: cleanBullet(line).split(/[-|:]/)[0]?.trim() ?? line,
+      description: "",
+      technologies: [],
+    };
+
+    const description = cleanBullet(line);
+    current.description = [current.description, description].filter(Boolean).join(" ");
+    current.technologies = unique([...current.technologies, ...extractTechnologies(description)]);
+  });
+
+  if (current) {
+    projects.push(current);
+  }
+
+  return projects;
 }
 
 function parseEducation(lines: string[]) {
-  return lines.map((line) => ({
-    school: line.split(/[-|,]/)[0]?.trim() ?? line,
-    degree: "",
-    period: line.match(periodPattern)?.[0] ?? "",
-    details: line,
-  }));
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const schoolLines: string[] = [];
+  const details: string[] = [];
+  let period = "";
+
+  for (const line of lines) {
+    const linePeriod = line.match(periodPattern)?.[0] ?? "";
+
+    if (linePeriod) {
+      period = linePeriod;
+      details.push(line);
+      continue;
+    }
+
+    if (isBulletLine(line) || schoolLines.length >= 2) {
+      details.push(cleanBullet(line));
+      continue;
+    }
+
+    schoolLines.push(line);
+  }
+
+  const fallback = lines[0] ?? "";
+
+  return [
+    {
+      school: schoolLines.join(" ") || fallback.replace(period, "").trim(),
+      degree: details.find((line) => /master|bachelor|engineer|degree/i.test(line)) ?? "",
+      period,
+      details: details.join(" "),
+    },
+  ];
 }
 
 function extractTechnologies(line: string) {
-  const matches = line.match(/\b(?:React|Next\.js|Node\.js|TypeScript|JavaScript|Python|Qdrant|RAG|AI|LLM)\b/g);
+  const matches = line.match(
+    /\b(?:React|ReactJS|Next\.?js|Node\.?js|NestJS|TypeScript|JavaScript|Python|PHP|Qdrant|RAG|AI|LLM|GraphQL|Docker|AWS|GCP|Cypress|Jest|Figma)\b/gi,
+  );
 
-  return matches ? [...new Set(matches)] : [];
+  return matches ? unique(matches) : [];
 }
 
 function isBulletLine(line: string) {
-  return /^[-*•]\s+/.test(line);
+  return /^(?:[-*•]\s+|8\s+)/.test(line);
+}
+
+function isInlineSubheading(line: string) {
+  return line.endsWith(":") && line.length <= 60;
 }
 
 function cleanBullet(line: string) {
-  return line.replace(/^[-*•]\s+/, "").trim();
+  return line
+    .replace(/^(?:[-*•]\s+|8\s+)/, "")
+    .replace(/^[\u0308¨×¡][ÕO]\s+/, "")
+    .replace(/\|\s*$/g, ".")
+    .replace(/\+\s*$/g, "")
+    .trim();
+}
+
+function isPeriodLine(line: string) {
+  return periodPattern.test(line) && line.replace(periodPattern, "").trim().length <= 8;
+}
+
+function isJobHeading(line: string) {
+  return (
+    !isBulletLine(line) &&
+    !line.endsWith(":") &&
+    line.length <= 140 &&
+    (/\s+\/\s*\S/.test(line) || /\s+\bat\b\s+/i.test(line) || Boolean(line.match(periodPattern)))
+  );
+}
+
+function appendToLastBullet(current: CvExperienceItem, line: string) {
+  const lastIndex = current.bullets.length - 1;
+  current.bullets[lastIndex] = `${current.bullets[lastIndex]} ${cleanBullet(line)}`.replace(/\s{2,}/g, " ");
+}
+
+function isProjectHeading(line: string, nextLine: string, current: CvProjectItem | null) {
+  return (
+    !isBulletLine(line) &&
+    !urlPattern.test(line) &&
+    !periodPattern.test(line) &&
+    line.length <= 80 &&
+    (/^[A-Z]/.test(line) || !current) &&
+    (Boolean(nextLine.match(periodPattern)) || urlPattern.test(nextLine))
+  );
+}
+
+function cleanLine(line: string) {
+  return line
+    .replace(/º/g, ":")
+    .normalize("NFKC")
+    .replace(/\u2028|\u2029/g, " ")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/^[8]\s+/, "• ")
+    .replace(/^[\u0308¨×¡][ÕO]\s+/, "• ")
+    .replace(/º\s*$/g, ":")
+    .replace(/\|\s*$/g, ".")
+    .replace(/\+\s*$/g, "")
+    .replace(/\s+([:.,])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function normalizeHeading(line: string) {
+  return line
+    .toLowerCase()
+    .replace(/[|:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeUrl(url: string) {
@@ -254,4 +470,17 @@ function getLinkLabel(url: string) {
   }
 
   return "Website";
+}
+
+function toTitleCase(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    .replace(/\bAi\b/g, "AI")
+    .replace(/\bUi\b/g, "UI")
+    .replace(/\bUx\b/g, "UX");
+}
+
+function unique(values: string[]) {
+  return values.filter((value, index) => values.indexOf(value) === index);
 }

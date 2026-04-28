@@ -17,6 +17,7 @@ describe("CV PDF import API", () => {
       pageCount: 1,
       characters: 47,
       pdfjsVersion: "5.6.205",
+      extractionMode: "layout-aware",
     });
   });
 
@@ -55,7 +56,8 @@ describe("CV PDF import API", () => {
       filename: "cv.pdf",
       pageCount: 1,
       extractedCharacters: 47,
-      parser: "heuristic",
+      extractionMode: "layout-aware",
+      parser: "layout-aware-heuristic",
     });
     expect(payload.draft.personal.name).toBe("Krystian Thiede");
     expect(payload.draft.skills).toContain("Next.js");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPdfText } from "@/lib/pdf";
+import { extractLayoutAwareTextFromItems, extractPdfText } from "@/lib/pdf";
 
 describe("PDF text extraction", () => {
   it("extracts text from a searchable PDF", async () => {
@@ -12,6 +12,7 @@ describe("PDF text extraction", () => {
     expect(result.text).toContain("RAG, vector search, eval pipelines");
     expect(result.characters).toBe(result.text.length);
     expect(result.pdfjsVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.extractionMode).toBe("layout-aware");
   });
 
   it("returns empty text when a PDF has no text layer", async () => {
@@ -22,6 +23,35 @@ describe("PDF text extraction", () => {
     expect(result.pageCount).toBe(1);
     expect(result.text).toBe("");
     expect(result.characters).toBe(0);
+  });
+
+  it("orders positioned text by columns and vertical layout", () => {
+    const text = extractLayoutAwareTextFromItems(
+      [
+        { str: "Education", x: 455, y: 730 },
+        { str: "experience", x: 190, y: 740 },
+        { str: "KrystiaN", x: 28, y: 732 },
+        { str: "8 Built search|", x: 195, y: 710 },
+        { str: "THIEDE", x: 28, y: 704 },
+        { str: "Key Projectsº", x: 190, y: 690 },
+        { str: "Gdansk University", x: 455, y: 700 },
+      ],
+      595,
+    );
+
+    expect(text).toBe(
+      [
+        "KrystiaN",
+        "THIEDE",
+        "",
+        "experience",
+        "• Built search.",
+        "Key Projects:",
+        "",
+        "Education",
+        "Gdansk University",
+      ].join("\n"),
+    );
   });
 });
 

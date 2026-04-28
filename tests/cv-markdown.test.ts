@@ -15,6 +15,7 @@ describe("CV Markdown export", () => {
         links: [{ label: "GitHub", url: "https://github.com/krystian" }],
       },
       summary: "Builds AI products.",
+      aspirations: "Applies AI to useful products.",
       skills: ["Next.js", "RAG"],
       experience: [
         {

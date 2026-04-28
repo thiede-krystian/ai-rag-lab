@@ -25,8 +25,9 @@ export async function POST(request: Request) {
       pageCount: extracted.pageCount,
       extractedCharacters: extracted.characters,
       pdfjsVersion: extracted.pdfjsVersion,
+      extractionMode: extracted.extractionMode,
       draft: parseCvTextToDraft(extracted.text),
-      parser: "heuristic" as const,
+      parser: "layout-aware-heuristic" as const,
     });
   } catch (error) {
     return jsonError(error);

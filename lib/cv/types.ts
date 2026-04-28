@@ -37,6 +37,7 @@ export type CvEducationItem = {
 export type CvDraft = {
   personal: CvPersonalInfo;
   summary: string;
+  aspirations: string;
   skills: string[];
   experience: CvExperienceItem[];
   projects: CvProjectItem[];
@@ -45,6 +46,6 @@ export type CvDraft = {
   languages: string[];
 };
 
-export type CvTemplateId = "classic-a4";
+export type CvTemplateId = "classic-a4" | "three-column-a4";
 
 export const CV_MAKER_STORAGE_KEY = "ai-rag-lab-cv-maker-draft-v1";

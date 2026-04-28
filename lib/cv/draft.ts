@@ -18,6 +18,7 @@ export function createEmptyCvDraft(): CvDraft {
       links: [],
     },
     summary: "",
+    aspirations: "",
     skills: [],
     experience: [],
     projects: [],
@@ -42,6 +43,7 @@ export function normalizeCvDraft(input: unknown): CvDraft {
       links: asArray(personal.links).map(normalizeLink).filter((link) => link.label || link.url),
     },
     summary: asString(source.summary),
+    aspirations: asString(source.aspirations),
     skills: cleanStringArray(source.skills),
     experience: asArray(source.experience)
       .map(normalizeExperience)
@@ -62,6 +64,7 @@ export function hasCvContent(draft: CvDraft) {
     draft.personal.name ||
       draft.personal.headline ||
       draft.summary ||
+      draft.aspirations ||
       draft.skills.length ||
       draft.experience.length ||
       draft.projects.length ||
@@ -93,7 +96,7 @@ function normalizeExperience(input: unknown): CvExperienceItem {
     company: asString(source.company),
     location: asString(source.location),
     period: asString(source.period),
-    bullets: cleanStringArray(source.bullets),
+    bullets: cleanTextArray(source.bullets),
   };
 }
 
@@ -122,6 +125,14 @@ function cleanStringArray(input: unknown) {
   return asArray(input)
     .flatMap((value) => (typeof value === "string" ? splitLooseList(value) : []))
     .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function cleanTextArray(input: unknown) {
+  return asArray(input)
+    .flatMap((value) => (typeof value === "string" ? value.split(/\n/) : []))
+    .map((value) => value.replace(/^[-*•]\s*/, "").trim())
     .filter(Boolean)
     .filter((value, index, values) => values.indexOf(value) === index);
 }

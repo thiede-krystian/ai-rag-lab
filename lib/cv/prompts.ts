@@ -13,7 +13,7 @@ export function buildCvParseMessages({
       content: [
         "You parse CV text into a clean structured JSON draft.",
         "Return only valid JSON. Do not wrap it in markdown.",
-        "Use this shape: { personal: { name, headline, email, phone, location, website, links: [{ label, url }] }, summary, skills, experience: [{ role, company, location, period, bullets }], projects: [{ name, description, technologies }], education: [{ school, degree, period, details }], certifications, languages }.",
+        "Use this shape: { personal: { name, headline, email, phone, location, website, links: [{ label, url }] }, summary, aspirations, skills, experience: [{ role, company, location, period, bullets }], projects: [{ name, description, technologies }], education: [{ school, degree, period, details }], certifications, languages }.",
         "Keep original facts. Do not invent employers, dates, degrees, or skills.",
       ].join("\n"),
     },

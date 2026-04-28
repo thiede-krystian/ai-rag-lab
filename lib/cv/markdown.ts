@@ -7,6 +7,7 @@ export function cvDraftToMarkdown(draft: CvDraft) {
   pushText(lines, draft.personal.headline);
   pushContact(lines, draft);
   pushSection(lines, "Summary", draft.summary);
+  pushSection(lines, "Aspirations", draft.aspirations);
   pushListSection(lines, "Skills", draft.skills);
   pushExperience(lines, draft);
   pushProjects(lines, draft);
