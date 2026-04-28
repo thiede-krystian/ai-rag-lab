@@ -103,3 +103,32 @@ pnpm lint
 pnpm test
 pnpm build
 ```
+
+## Deployment Environments
+
+Qdrant connection is selected from environment variables:
+
+- `QDRANT_TARGET=auto`: default; uses cloud when `QDRANT_API_KEY` or Vercel env is present,
+  otherwise local Docker Qdrant.
+- `QDRANT_TARGET=local`: force local Qdrant.
+- `QDRANT_TARGET=cloud`: force Qdrant Cloud.
+
+Local Docker setup:
+
+```txt
+QDRANT_TARGET=local
+QDRANT_LOCAL_URL=http://localhost:6333
+QDRANT_COLLECTION=ai_rag_lab_documents
+```
+
+Vercel + Qdrant Cloud setup:
+
+```txt
+QDRANT_TARGET=cloud
+QDRANT_CLOUD_URL=https://your-cluster.region.cloud-provider.cloud.qdrant.io:6333
+QDRANT_API_KEY=your-database-api-key
+QDRANT_COLLECTION=ai_rag_lab_documents
+```
+
+Never commit real API keys to the repository. Store production values in Vercel
+Project Settings -> Environment Variables.

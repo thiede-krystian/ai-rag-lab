@@ -22,11 +22,24 @@ export type QdrantPayload = {
 let qdrantClient: QdrantClient | null = null;
 
 function getQdrantClient() {
+  validateQdrantConfig();
+
   qdrantClient ??= new QdrantClient({
     url: qdrantConfig.url,
+    apiKey: qdrantConfig.apiKey,
   });
 
   return qdrantClient;
+}
+
+function validateQdrantConfig() {
+  if (qdrantConfig.target === "cloud" && !qdrantConfig.apiKey) {
+    throw new Error("QDRANT_API_KEY is required when QDRANT_TARGET resolves to cloud.");
+  }
+
+  if (qdrantConfig.target === "cloud" && qdrantConfig.url === "http://localhost:6333") {
+    throw new Error("QDRANT_CLOUD_URL or QDRANT_URL is required when QDRANT_TARGET resolves to cloud.");
+  }
 }
 
 export function createStablePointId(value: string) {
