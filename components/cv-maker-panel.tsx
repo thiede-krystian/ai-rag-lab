@@ -10,6 +10,7 @@ import {
   FileInput,
   Group,
   Modal,
+  Select,
   SimpleGrid,
   Stack,
   TagsInput,
@@ -32,7 +33,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { readApiResponse } from "@/lib/api-response";
 import { createEmptyCvDraft, normalizeCvDraft } from "@/lib/cv/draft";
 import { cvDraftToMarkdown } from "@/lib/cv/markdown";
-import { CV_MAKER_STORAGE_KEY, type CvDraft } from "@/lib/cv/types";
+import { DEFAULT_CV_TEMPLATE, cvTemplateOptions, normalizeCvTemplateId } from "@/lib/cv/templates";
+import { CV_MAKER_STORAGE_KEY, type CvDraft, type CvTemplateId } from "@/lib/cv/types";
 
 type CvImportPdfResponse = {
   filename: string;
@@ -40,7 +42,8 @@ type CvImportPdfResponse = {
   pageCount: number;
   extractedCharacters: number;
   draft: CvDraft;
-  parser: "heuristic";
+  extractionMode: "layout-aware";
+  parser: "layout-aware-heuristic";
   error?: string;
 };
 
@@ -54,6 +57,8 @@ type CvMakerStorage = {
   draft: CvDraft;
   sourceText: string;
   sourceFilename: string;
+  sourceExtractionMode: string;
+  template: CvTemplateId;
 };
 type PersonalTextField = Exclude<keyof CvDraft["personal"], "links">;
 
@@ -61,6 +66,8 @@ export function CvMakerPanel() {
   const [draft, setDraft] = useState<CvDraft>(() => createEmptyCvDraft());
   const [sourceText, setSourceText] = useState("");
   const [sourceFilename, setSourceFilename] = useState("");
+  const [sourceExtractionMode, setSourceExtractionMode] = useState("");
+  const [template, setTemplate] = useState<CvTemplateId>(DEFAULT_CV_TEMPLATE);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -76,6 +83,8 @@ export function CvMakerPanel() {
         setDraft(saved.draft);
         setSourceText(saved.sourceText);
         setSourceFilename(saved.sourceFilename);
+        setSourceExtractionMode(saved.sourceExtractionMode);
+        setTemplate(saved.template);
       }
 
       setIsHydrated(true);
@@ -95,9 +104,11 @@ export function CvMakerPanel() {
         draft,
         sourceText,
         sourceFilename,
+        sourceExtractionMode,
+        template,
       } satisfies CvMakerStorage),
     );
-  }, [draft, isHydrated, sourceFilename, sourceText]);
+  }, [draft, isHydrated, sourceExtractionMode, sourceFilename, sourceText, template]);
 
   async function handleImportPdf() {
     if (!importFile) {
@@ -128,9 +139,10 @@ export function CvMakerPanel() {
       setDraft(normalizeCvDraft(payload.draft));
       setSourceText(payload.text);
       setSourceFilename(payload.filename);
+      setSourceExtractionMode(payload.extractionMode);
       notifications.show({
         title: "CV imported",
-        message: `${payload.extractedCharacters} characters extracted from ${payload.pageCount} page(s).`,
+        message: `${payload.extractedCharacters} characters extracted with ${payload.extractionMode} mode from ${payload.pageCount} page(s).`,
         color: "green",
       });
     } catch (error) {
@@ -210,7 +222,7 @@ export function CvMakerPanel() {
         },
         body: JSON.stringify({
           draft,
-          template: "classic-a4",
+          template,
         }),
       });
 
@@ -220,7 +232,7 @@ export function CvMakerPanel() {
       }
 
       const blob = await response.blob();
-      downloadBlob(blob, "application/pdf", getDownloadFilename(draft, "pdf"));
+      downloadBlob(blob, "application/pdf", getDownloadFilename(draft, "pdf", template));
     } catch (error) {
       notifications.show({
         title: "PDF export failed",
@@ -236,6 +248,7 @@ export function CvMakerPanel() {
     setDraft(createEmptyCvDraft());
     setSourceText("");
     setSourceFilename("");
+    setSourceExtractionMode("");
     setImportFile(null);
     window.localStorage.removeItem(CV_MAKER_STORAGE_KEY);
     notifications.show({
@@ -259,7 +272,10 @@ export function CvMakerPanel() {
                   Start from a searchable PDF. This does not index anything in Qdrant.
                 </Text>
               </div>
-              {sourceFilename ? <Badge variant="light">{sourceFilename}</Badge> : null}
+              <Group gap="xs">
+                {sourceExtractionMode ? <Badge variant="light">{sourceExtractionMode}</Badge> : null}
+                {sourceFilename ? <Badge variant="light">{sourceFilename}</Badge> : null}
+              </Group>
             </Group>
             <FileInput
               accept="application/pdf"
@@ -283,8 +299,8 @@ export function CvMakerPanel() {
               </Button>
             </Group>
             <Alert color="blue" variant="light">
-              The first pass uses local heuristics. Use AI parsing only if you want to send the extracted CV
-              text to OpenRouter for better structure.
+              The first pass uses local layout-aware heuristics. Use AI parsing only if you want to send the
+              extracted CV text to OpenRouter for better structure.
             </Alert>
             <Textarea
               autosize
@@ -309,9 +325,16 @@ export function CvMakerPanel() {
                 </Text>
               </div>
               <Badge color="blue" variant="light">
-                classic-a4
+                {template}
               </Badge>
             </Group>
+            <Select
+              allowDeselect={false}
+              data={cvTemplateOptions}
+              label="PDF template"
+              onChange={(value) => setTemplate(normalizeCvTemplateId(value))}
+              value={template}
+            />
             <Group>
               <Button leftSection={<Download size={16} />} onClick={handleDownloadMarkdown} variant="default">
                 Download MD
@@ -406,6 +429,15 @@ export function CvMakerPanel() {
               minRows={4}
               onChange={(event) => setDraft((current) => ({ ...current, summary: event.currentTarget.value }))}
               value={draft.summary}
+            />
+          </Fieldset>
+
+          <Fieldset legend="Aspirations">
+            <Textarea
+              autosize
+              minRows={3}
+              onChange={(event) => setDraft((current) => ({ ...current, aspirations: event.currentTarget.value }))}
+              value={draft.aspirations}
             />
           </Fieldset>
 
@@ -722,6 +754,9 @@ function readStoredDraft(): CvMakerStorage | null {
       draft: normalizeCvDraft(parsed.draft),
       sourceText: typeof parsed.sourceText === "string" ? parsed.sourceText : "",
       sourceFilename: typeof parsed.sourceFilename === "string" ? parsed.sourceFilename : "",
+      sourceExtractionMode:
+        typeof parsed.sourceExtractionMode === "string" ? parsed.sourceExtractionMode : "",
+      template: normalizeCvTemplateId(parsed.template),
     };
   } catch {
     return null;
@@ -739,13 +774,14 @@ function downloadBlob(content: BlobPart | Blob, type: string, filename: string) 
   URL.revokeObjectURL(url);
 }
 
-function getDownloadFilename(draft: CvDraft, extension: "md" | "pdf") {
+function getDownloadFilename(draft: CvDraft, extension: "md" | "pdf", template?: CvTemplateId) {
   const slug = draft.personal.name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+  const suffix = extension === "pdf" && template ? template : "updated";
 
-  return `${slug || "cv"}-updated.${extension}`;
+  return `${slug || "cv"}-${suffix}.${extension}`;
 }
 
 function getLinkLabel(url: string) {
