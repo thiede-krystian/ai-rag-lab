@@ -9,6 +9,7 @@ import { resetDocumentCollection, upsertChunks } from "@/lib/qdrant";
 import type { DocumentInput, ImportMode, SourceType } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const importFieldsSchema = z.object({
   title: z.string().optional(),
