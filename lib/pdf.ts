@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { ensurePdfJsDomPolyfills } from "@/lib/pdf-dom-polyfills";
 
 export type PdfTextExtractionResult = {
   text: string;
@@ -62,6 +63,7 @@ export async function extractPdfText(data: PdfBinary): Promise<PdfTextExtraction
 }
 
 function loadPdfJs() {
+  ensurePdfJsDomPolyfills();
   pdfJsModulePromise ??= import("pdfjs-dist/legacy/build/pdf.mjs");
 
   return pdfJsModulePromise;
