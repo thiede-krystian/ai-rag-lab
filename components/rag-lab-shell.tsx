@@ -79,9 +79,15 @@ const ragPromptOptions = [
   { value: "rag_v1", label: "rag_v1" },
 ];
 
-export function RagLabShell() {
+type QdrantTarget = "local" | "cloud";
+
+export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
   const [embeddingProfile, setEmbeddingProfile] =
     useState<EmbeddingProfileId>(defaultEmbeddingProfileId);
+  const qdrantBadge =
+    qdrantTarget === "cloud"
+      ? { color: "cyan", label: "Qdrant Cloud" }
+      : { color: "teal", label: "Local Qdrant" };
 
   return (
     <AppShell header={{ height: 72 }} padding="md">
@@ -100,8 +106,8 @@ export function RagLabShell() {
               </div>
             </Group>
             <Group gap="xs" visibleFrom="sm">
-              <Badge variant="light" color="teal">
-                Local Qdrant
+              <Badge variant="light" color={qdrantBadge.color}>
+                {qdrantBadge.label}
               </Badge>
               <Badge variant="light" color="blue">
                 OpenRouter embeddings
