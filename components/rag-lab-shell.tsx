@@ -69,9 +69,11 @@ import type {
   ChatResponse,
   ImportMode,
   IndexedDocument,
+  JobRequirement,
   MatchResponse,
   PromptVersion,
   QuickEvalRun,
+  RequirementMatch,
   SearchResult,
   SourceType,
 } from "@/lib/types";
@@ -192,6 +194,9 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
               <Tabs.Tab value="evals" leftSection={<Gauge size={16} />} data-tour="tab-evals">
                 Evals
               </Tabs.Tab>
+              <Tabs.Tab value="match" leftSection={<ListChecks size={16} />} data-tour="tab-match">
+                CV-job match
+              </Tabs.Tab>
               <Tabs.Tab
                 value="cv"
                 leftSection={<FilePenLine size={16} />}
@@ -216,6 +221,9 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
             </Tabs.Panel>
             <Tabs.Panel value="evals">
               <EvalsPanel embeddingProfile={embeddingProfile} onNavigate={setActiveTab} />
+            </Tabs.Panel>
+            <Tabs.Panel value="match">
+              <MatchPanel />
             </Tabs.Panel>
             <Tabs.Panel value="cv">
               <CvMakerPanel />
@@ -334,7 +342,7 @@ function DemoFlowPanel({
       done: hasMatchInputs,
       disabled: !hasMatchInputs,
       label: "5. CV-job match",
-      tab: "chat" as TourTab,
+      tab: "match" as TourTab,
     },
   ];
 
@@ -1185,57 +1193,7 @@ function ChatPanel({
   const [promptVersion, setPromptVersion] = useState<PromptVersion>("rag_strict_v2");
   const [topK, setTopK] = useState<number | string>(5);
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
-  const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(null);
-  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
-  const [cvTitle, setCvTitle] = useState<string | null>(null);
-  const [jobTitle, setJobTitle] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
-  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
-  const [isScoring, setIsScoring] = useState(false);
-  const cvOptions = useMemo(() => getDocumentOptions(documents, "cv"), [documents]);
-  const jobOptions = useMemo(() => getDocumentOptions(documents, "job"), [documents]);
-  const selectedCvTitle = getSelectedDocumentTitle(cvTitle, cvOptions);
-  const selectedJobTitle = getSelectedDocumentTitle(jobTitle, jobOptions);
-
-  const loadDocuments = useCallback(async () => {
-    setIsLoadingDocuments(true);
-
-    try {
-      setDocuments(await fetchDocumentInventory());
-    } catch (error) {
-      notifications.show({
-        title: "Document inventory failed",
-        message: getErrorMessage(error),
-        color: "red",
-      });
-    } finally {
-      setIsLoadingDocuments(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    fetchDocumentInventory()
-      .then((nextDocuments) => {
-        if (isActive) {
-          setDocuments(nextDocuments);
-        }
-      })
-      .catch((error: unknown) => {
-        if (isActive) {
-          notifications.show({
-            title: "Document inventory failed",
-            message: getErrorMessage(error),
-            color: "red",
-          });
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
 
   async function handleAsk() {
     setIsAsking(true);
@@ -1273,52 +1231,6 @@ function ChatPanel({
       });
     } finally {
       setIsAsking(false);
-    }
-  }
-
-  async function handleScoreMatch() {
-    if (!selectedCvTitle || !selectedJobTitle) {
-      notifications.show({
-        title: "Match scoring failed",
-        message: "Import or add one CV document and one Job document first.",
-        color: "red",
-      });
-      return;
-    }
-
-    setIsScoring(true);
-
-    try {
-      const response = await fetch("/api/match", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          cvTitle: selectedCvTitle,
-          jobTitle: selectedJobTitle,
-        }),
-      });
-      const payload = await readApiResponse<MatchApiResponse>(response);
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Could not score CV-job match.");
-      }
-
-      setMatchResponse(payload);
-      notifications.show({
-        title: "Match score generated",
-        message: `${payload.score}/100`,
-        color: "green",
-      });
-    } catch (error) {
-      notifications.show({
-        title: "Match scoring failed",
-        message: getErrorMessage(error),
-        color: "red",
-      });
-    } finally {
-      setIsScoring(false);
     }
   }
 
@@ -1428,72 +1340,267 @@ function ChatPanel({
           </Accordion>
         </Stack>
       </Card>
-      <Card withBorder radius="md" padding="lg" data-tour="match-card">
-        <Stack gap="md">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Title order={3} size="h4">
-                CV-job match
-              </Title>
-              <Text size="sm" c="dimmed" mt={4}>
-                Select one indexed CV and one indexed job document from Qdrant.
-              </Text>
-            </div>
-            <Button
-              leftSection={<RefreshCw size={16} />}
-              loading={isLoadingDocuments}
-              onClick={loadDocuments}
-              variant="default"
-            >
-              Refresh documents
-            </Button>
-          </Group>
-          <Group align="flex-end">
-            <Select
-              data={cvOptions}
-              label="CV document"
-              onChange={setCvTitle}
-              placeholder="Import a CV PDF first"
-              searchable
-              value={selectedCvTitle}
-              style={{ flex: 1 }}
-            />
-            <Select
-              data={jobOptions}
-              label="Job document"
-              onChange={setJobTitle}
-              placeholder="Import or add a Job document first"
-              searchable
-              value={selectedJobTitle}
-              style={{ flex: 1 }}
-            />
-            <Button
-              loading={isScoring}
-              onClick={handleScoreMatch}
-              variant="light"
-              data-tour="score-match-button"
-            >
-              Score match
-            </Button>
-          </Group>
-          {cvOptions.length === 0 || jobOptions.length === 0 ? (
-            <Alert color="blue" variant="light">
-              Score match needs at least one indexed CV document and one indexed Job document.
-            </Alert>
-          ) : null}
-          {matchResponse ? <MatchScoreResult result={matchResponse} /> : null}
-        </Stack>
-      </Card>
     </Stack>
   );
 }
 
+function MatchPanel() {
+  const [matchResponse, setMatchResponse] = useState<MatchResponse | null>(null);
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [cvTitle, setCvTitle] = useState<string | null>(null);
+  const [jobTitle, setJobTitle] = useState<string | null>(null);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
+  const cvOptions = useMemo(() => getDocumentOptions(documents, "cv"), [documents]);
+  const jobOptions = useMemo(() => getDocumentOptions(documents, "job"), [documents]);
+  const selectedCvTitle = getSelectedDocumentTitle(cvTitle, cvOptions);
+  const selectedJobTitle = getSelectedDocumentTitle(jobTitle, jobOptions);
+
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
+
+    try {
+      setDocuments(await fetchDocumentInventory());
+    } catch (error) {
+      notifications.show({
+        title: "Document inventory failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchDocumentInventory()
+      .then((nextDocuments) => {
+        if (isActive) {
+          setDocuments(nextDocuments);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          notifications.show({
+            title: "Document inventory failed",
+            message: getErrorMessage(error),
+            color: "red",
+          });
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function handleScoreMatch() {
+    if (!selectedCvTitle || !selectedJobTitle) {
+      notifications.show({
+        title: "Match scoring failed",
+        message: "Import or add one CV document and one Job document first.",
+        color: "red",
+      });
+      return;
+    }
+
+    setIsScoring(true);
+
+    try {
+      const response = await fetch("/api/match", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cvTitle: selectedCvTitle,
+          jobTitle: selectedJobTitle,
+        }),
+      });
+      const payload = await readApiResponse<MatchApiResponse>(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not score CV-job match.");
+      }
+
+      setMatchResponse(payload);
+      notifications.show({
+        title: "Match score generated",
+        message: `${payload.score}/100`,
+        color: "green",
+      });
+    } catch (error) {
+      notifications.show({
+        title: "Match scoring failed",
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsScoring(false);
+    }
+  }
+
+  return (
+    <Card withBorder radius="md" padding="lg" data-tour="match-card">
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Title order={3} size="h4">
+              CV-job match
+            </Title>
+            <Text size="sm" c="dimmed" mt={4}>
+              Select one indexed CV and one job document. The app extracts a job-specific rubric
+              first, then scores the CV against those requirements.
+            </Text>
+          </div>
+          <Button
+            leftSection={<RefreshCw size={16} />}
+            loading={isLoadingDocuments}
+            onClick={loadDocuments}
+            variant="default"
+          >
+            Refresh documents
+          </Button>
+        </Group>
+        <Group align="flex-end">
+          <Select
+            data={cvOptions}
+            label="CV document"
+            onChange={setCvTitle}
+            placeholder="Import a CV PDF first"
+            searchable
+            value={selectedCvTitle}
+            style={{ flex: 1 }}
+          />
+          <Select
+            data={jobOptions}
+            label="Job document"
+            onChange={setJobTitle}
+            placeholder="Import or add a Job document first"
+            searchable
+            value={selectedJobTitle}
+            style={{ flex: 1 }}
+          />
+          <Button
+            loading={isScoring}
+            onClick={handleScoreMatch}
+            variant="light"
+            data-tour="score-match-button"
+          >
+            Score match
+          </Button>
+        </Group>
+        {cvOptions.length === 0 || jobOptions.length === 0 ? (
+          <Alert color="blue" variant="light">
+            Score match needs at least one indexed CV document and one indexed Job document.
+          </Alert>
+        ) : null}
+        {matchResponse ? <MatchScoreResult result={matchResponse} /> : null}
+      </Stack>
+    </Card>
+  );
+}
+
 function MatchScoreResult({ result }: { result: MatchResponse }) {
+  const rubricCount =
+    result.rubric.mustHave.length + result.rubric.niceToHave.length + result.rubric.domainContext.length;
+
   return (
     <Alert color="teal" variant="light" title={`CV-job match: ${result.score}/100`}>
-      <Stack gap="sm">
+      <Stack gap="md">
         <Progress value={result.score} color={getScoreColor(result.score)} />
         <Text size="sm">{result.summary}</Text>
+        <Text size="xs" c="dimmed">
+          Score is based on requirements extracted from the selected job description, not a fixed
+          AI Engineer checklist.
+        </Text>
+        <Paper withBorder radius="sm" p="sm">
+          <Stack gap="sm">
+            <Group justify="space-between" align="flex-start">
+              <div>
+                <Text fw={700} size="sm">
+                  Extracted job rubric
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {rubricCount > 0
+                    ? `${rubricCount} requirement${rubricCount === 1 ? "" : "s"} found in the job document.`
+                    : "No structured requirements were extracted; the scoring prompt still received the full job text."}
+                </Text>
+              </div>
+              <Group gap="xs">
+                {result.rubric.roleTitle ? (
+                  <Badge variant="light" color="gray">
+                    {result.rubric.roleTitle}
+                  </Badge>
+                ) : null}
+                {result.rubric.seniority ? (
+                  <Badge variant="light" color="gray">
+                    {result.rubric.seniority}
+                  </Badge>
+                ) : null}
+              </Group>
+            </Group>
+            <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+              <RubricRequirementGroup
+                color="red"
+                requirements={result.rubric.mustHave}
+                title="Must-have"
+              />
+              <RubricRequirementGroup
+                color="yellow"
+                requirements={result.rubric.niceToHave}
+                title="Nice-to-have"
+              />
+              <RubricRequirementGroup
+                color="gray"
+                requirements={result.rubric.domainContext}
+                title="Domain/context"
+              />
+            </SimpleGrid>
+          </Stack>
+        </Paper>
+        {result.requirementMatches.length > 0 ? (
+          <Stack gap="xs">
+            <Text fw={700} size="sm">
+              Requirement match
+            </Text>
+            <Table.ScrollContainer minWidth={720}>
+              <Table verticalSpacing="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Requirement</Table.Th>
+                    <Table.Th>Category</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Evidence</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {result.requirementMatches.map((match, index) => (
+                    <Table.Tr key={`${match.requirement}-${match.status}-${index}`}>
+                      <Table.Td>{match.requirement}</Table.Td>
+                      <Table.Td>
+                        <Badge size="sm" variant="light" color={getRequirementCategoryColor(match.category)}>
+                          {getRequirementCategoryLabel(match.category)}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge size="sm" variant="light" color={getRequirementStatusColor(match.status)}>
+                          {match.status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{match.evidence.join("; ") || "No direct evidence."}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Stack>
+        ) : null}
+        <Text fw={700} size="sm">
+          Quick summary
+        </Text>
         <Table.ScrollContainer minWidth={560}>
           <Table verticalSpacing="xs">
             <Table.Thead>
@@ -1528,6 +1635,54 @@ function MatchScoreResult({ result }: { result: MatchResponse }) {
         </Group>
       </Stack>
     </Alert>
+  );
+}
+
+function RubricRequirementGroup({
+  color,
+  requirements,
+  title,
+}: {
+  color: string;
+  requirements: JobRequirement[];
+  title: string;
+}) {
+  return (
+    <Paper withBorder radius="sm" p="sm">
+      <Stack gap="xs">
+        <Group justify="space-between">
+          <Badge variant="light" color={color}>
+            {title}
+          </Badge>
+          <Text size="xs" c="dimmed">
+            {requirements.length}
+          </Text>
+        </Group>
+        {requirements.length > 0 ? (
+          requirements.map((requirement) => (
+            <Stack key={`${requirement.category}-${requirement.label}`} gap={4}>
+              <Group gap="xs" align="center">
+                <Text size="sm" fw={600}>
+                  {requirement.label}
+                </Text>
+                <Badge size="xs" variant="outline" color="gray">
+                  {requirement.importance}
+                </Badge>
+              </Group>
+              {requirement.evidence.length > 0 ? (
+                <Text size="xs" c="dimmed">
+                  {requirement.evidence.join("; ")}
+                </Text>
+              ) : null}
+            </Stack>
+          ))
+        ) : (
+          <Text size="xs" c="dimmed">
+            None extracted.
+          </Text>
+        )}
+      </Stack>
+    </Paper>
   );
 }
 
@@ -1996,6 +2151,42 @@ function getScoreColor(score: number) {
   }
 
   return "red";
+}
+
+function getRequirementStatusColor(status: RequirementMatch["status"]) {
+  if (status === "strong") {
+    return "green";
+  }
+
+  if (status === "partial") {
+    return "yellow";
+  }
+
+  return "red";
+}
+
+function getRequirementCategoryColor(category: RequirementMatch["category"]) {
+  if (category === "must-have") {
+    return "red";
+  }
+
+  if (category === "nice-to-have") {
+    return "yellow";
+  }
+
+  return "gray";
+}
+
+function getRequirementCategoryLabel(category: RequirementMatch["category"]) {
+  if (category === "must-have") {
+    return "Must-have";
+  }
+
+  if (category === "nice-to-have") {
+    return "Nice-to-have";
+  }
+
+  return "Domain/context";
 }
 
 function zipLists(left: string[], right: string[]) {

@@ -8,7 +8,7 @@ import {
   shouldAutoStartProductTour,
 } from "@/lib/tour-state";
 
-export type TourTab = "documents" | "cv" | "search" | "chat" | "evals";
+export type TourTab = "documents" | "cv" | "search" | "chat" | "evals" | "match";
 
 type ProductTourProps = {
   activeTab: TourTab;
@@ -104,11 +104,19 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "top",
   },
   {
+    target: "tab-match",
+    tab: "match",
+    title: "CV-job match tab",
+    description:
+      "CV-job scoring is separate from RAG Chat so the demo can show question answering and fit scoring as two distinct workflows.",
+    side: "bottom",
+  },
+  {
     target: "match-card",
-    tab: "chat",
+    tab: "match",
     title: "CV-job match",
     description:
-      "Select one CV document and one Job document from Qdrant, then score the fit with an LLM prompt.",
+      "Select one CV document and one Job document from Qdrant, then score the fit against requirements extracted from the job description.",
     side: "top",
   },
   {

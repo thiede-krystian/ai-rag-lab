@@ -272,14 +272,17 @@ export function CvMakerPanel() {
         <Card withBorder radius="md" padding="lg" data-tour="cv-import">
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
-              <div>
-                <Title order={3} size="h4">
-                  Import CV PDF
-                </Title>
-                <Text size="sm" c="dimmed" mt={4}>
-                  Start from a searchable PDF. This does not index anything in Qdrant.
-                </Text>
-              </div>
+              <Group gap="sm" align="flex-start" wrap="nowrap">
+                <StepNumberBadge value={1} />
+                <div>
+                  <Title order={3} size="h4">
+                    Import CV PDF
+                  </Title>
+                  <Text size="sm" c="dimmed" mt={4}>
+                    Start from a searchable PDF. This does not index anything in Qdrant.
+                  </Text>
+                </div>
+              </Group>
               <Group gap="xs">
                 {sourceExtractionMode ? <Badge variant="light">{sourceExtractionMode}</Badge> : null}
                 {sourceFilename ? <Badge variant="light">{sourceFilename}</Badge> : null}
@@ -331,14 +334,17 @@ export function CvMakerPanel() {
         <Card withBorder radius="md" padding="lg" data-tour="cv-export" style={{ alignSelf: "start" }}>
           <Stack gap="md">
             <Group justify="space-between" align="flex-start">
-              <div>
-                <Title order={3} size="h4">
-                  Export
-                </Title>
-                <Text size="sm" c="dimmed" mt={4}>
-                  Download a regenerated CV from the structured draft.
-                </Text>
-              </div>
+              <Group gap="sm" align="flex-start" wrap="nowrap">
+                <StepNumberBadge value={3} />
+                <div>
+                  <Title order={3} size="h4">
+                    Export
+                  </Title>
+                  <Text size="sm" c="dimmed" mt={4}>
+                    Download a regenerated CV from the structured draft.
+                  </Text>
+                </div>
+              </Group>
               <Badge color="blue" variant="light">
                 {template}
               </Badge>
@@ -388,15 +394,23 @@ export function CvMakerPanel() {
       <Card withBorder radius="md" padding="lg" data-tour="cv-editor">
         <Stack gap="lg">
           <Group justify="space-between">
-            <Title order={3} size="h4">
-              Editable CV draft
-            </Title>
+            <Group gap="sm" align="flex-start" wrap="nowrap">
+              <StepNumberBadge value={2} />
+              <div>
+                <Title order={3} size="h4">
+                  Editable CV draft
+                </Title>
+                <Text size="sm" c="dimmed" mt={4}>
+                  Review structured fields before exporting the regenerated CV.
+                </Text>
+              </div>
+            </Group>
             <Badge variant="light">{draft.experience.length} experience items</Badge>
           </Group>
 
           <Accordion multiple defaultValue={["basics", "experience"]} variant="separated">
             <Accordion.Item value="basics">
-              <Accordion.Control>Step 2: personal info, summary and skills</Accordion.Control>
+              <Accordion.Control>Personal info, summary and skills</Accordion.Control>
               <Accordion.Panel>
                 <Stack gap="md">
                   <Fieldset legend="Personal info">
@@ -502,21 +516,21 @@ export function CvMakerPanel() {
             </Accordion.Item>
 
             <Accordion.Item value="experience">
-              <Accordion.Control>Step 2: experience ({draft.experience.length})</Accordion.Control>
+              <Accordion.Control>Experience ({draft.experience.length})</Accordion.Control>
               <Accordion.Panel>
                 <EditableExperienceSection draft={draft} setDraft={setDraft} />
               </Accordion.Panel>
             </Accordion.Item>
 
             <Accordion.Item value="projects">
-              <Accordion.Control>Step 2: projects ({draft.projects.length})</Accordion.Control>
+              <Accordion.Control>Projects ({draft.projects.length})</Accordion.Control>
               <Accordion.Panel>
                 <EditableProjectsSection draft={draft} setDraft={setDraft} />
               </Accordion.Panel>
             </Accordion.Item>
 
             <Accordion.Item value="education">
-              <Accordion.Control>Step 2: education ({draft.education.length})</Accordion.Control>
+              <Accordion.Control>Education ({draft.education.length})</Accordion.Control>
               <Accordion.Panel>
                 <EditableEducationSection draft={draft} setDraft={setDraft} />
               </Accordion.Panel>
@@ -679,6 +693,16 @@ function CvWorkflowSteps({
         />
       </SimpleGrid>
     </Paper>
+  );
+}
+
+function StepNumberBadge({ value }: { value: number }) {
+  return (
+    <ThemeIcon color="blue" variant="light" radius="xl" size="lg">
+      <Text fw={800} size="sm" c="blue">
+        {value}
+      </Text>
+    </ThemeIcon>
   );
 }
 
