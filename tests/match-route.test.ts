@@ -51,16 +51,61 @@ describe("match scoring API", () => {
       async ({ sourceType }: { title: string; sourceType: string }) =>
         sourceType === "cv" ? cvChunks : jobChunks,
     );
-    mocks.createChatCompletion.mockResolvedValue({
-      model: "openrouter-test-model",
-      content: JSON.stringify({
-        score: 88,
-        summary: "Strong AI Engineer match.",
-        strengths: ["RAG", "TypeScript"],
-        gaps: ["Production eval automation"],
-        evidence: ["CV and role both mention RAG."],
-      }),
-    });
+    mocks.createChatCompletion
+      .mockResolvedValueOnce({
+        model: "openrouter-test-model",
+        content: JSON.stringify({
+          roleTitle: "AI Engineer",
+          seniority: "Senior",
+          mustHave: [
+            {
+              label: "RAG systems",
+              category: "must-have",
+              importance: "high",
+              evidence: ["Role requires RAG."],
+            },
+            {
+              label: "TypeScript",
+              category: "must-have",
+              importance: "high",
+              evidence: ["Role requires TypeScript."],
+            },
+          ],
+          niceToHave: [
+            {
+              label: "Evaluation pipelines",
+              category: "nice-to-have",
+              importance: "medium",
+              evidence: ["Role mentions evals."],
+            },
+          ],
+          domainContext: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        model: "openrouter-test-model",
+        content: JSON.stringify({
+          score: 88,
+          summary: "Strong job-specific match.",
+          strengths: ["RAG", "TypeScript"],
+          gaps: ["Production eval automation"],
+          evidence: ["CV and role both mention RAG."],
+          requirementMatches: [
+            {
+              requirement: "RAG systems",
+              category: "must-have",
+              status: "strong",
+              evidence: ["Candidate has RAG experience."],
+            },
+            {
+              requirement: "Evaluation pipelines",
+              category: "nice-to-have",
+              status: "partial",
+              evidence: ["Candidate mentions evals."],
+            },
+          ],
+        }),
+      });
   });
 
   it("requires selected CV and Job titles", async () => {
@@ -93,10 +138,42 @@ describe("match scoring API", () => {
       cvTitle: "Imported CV",
       jobTitle: "AI Engineer Role",
       score: 88,
-      summary: "Strong AI Engineer match.",
+      summary: "Strong job-specific match.",
       strengths: ["RAG", "TypeScript"],
       gaps: ["Production eval automation"],
       model: "openrouter-test-model",
+      rubric: {
+        roleTitle: "AI Engineer",
+        seniority: "Senior",
+        mustHave: [
+          {
+            label: "RAG systems",
+            category: "must-have",
+            importance: "high",
+            evidence: ["Role requires RAG."],
+          },
+          {
+            label: "TypeScript",
+            category: "must-have",
+            importance: "high",
+            evidence: ["Role requires TypeScript."],
+          },
+        ],
+      },
+      requirementMatches: [
+        {
+          requirement: "RAG systems",
+          category: "must-have",
+          status: "strong",
+          evidence: ["Candidate has RAG experience."],
+        },
+        {
+          requirement: "Evaluation pipelines",
+          category: "nice-to-have",
+          status: "partial",
+          evidence: ["Candidate mentions evals."],
+        },
+      ],
     });
     expect(mocks.getDocumentChunks).toHaveBeenCalledWith({
       title: "Imported CV",
@@ -106,7 +183,16 @@ describe("match scoring API", () => {
       title: "AI Engineer Role",
       sourceType: "job",
     });
-    expect(mocks.createChatCompletion).toHaveBeenCalledOnce();
+    expect(mocks.createChatCompletion).toHaveBeenCalledTimes(2);
+    expect(mocks.createChatCompletion.mock.calls[0]?.[0][0]?.content).toContain(
+      "job-specific scoring rubric",
+    );
+    expect(mocks.createChatCompletion.mock.calls[1]?.[0][0]?.content).toContain(
+      "Do not use a generic AI Engineer checklist",
+    );
+    expect(mocks.createChatCompletion.mock.calls[1]?.[0][0]?.content).not.toContain(
+      "AI engineering, embeddings, vector search",
+    );
   });
 
   it("returns 400 when the selected CV has no indexed chunks", async () => {

@@ -61,6 +61,34 @@ export type ChatResponse = {
   latencyMs: number;
 };
 
+export type JobRequirementCategory = "must-have" | "nice-to-have" | "domain-context";
+
+export type JobRequirementImportance = "high" | "medium" | "low";
+
+export type RequirementMatchStatus = "strong" | "partial" | "missing";
+
+export type JobRequirement = {
+  label: string;
+  category: JobRequirementCategory;
+  importance: JobRequirementImportance;
+  evidence: string[];
+};
+
+export type JobRequirementsRubric = {
+  roleTitle?: string;
+  seniority?: string;
+  mustHave: JobRequirement[];
+  niceToHave: JobRequirement[];
+  domainContext: JobRequirement[];
+};
+
+export type RequirementMatch = {
+  requirement: string;
+  category: JobRequirementCategory;
+  status: RequirementMatchStatus;
+  evidence: string[];
+};
+
 export type MatchResponse = {
   cvTitle: string;
   jobTitle: string;
@@ -69,6 +97,8 @@ export type MatchResponse = {
   strengths: string[];
   gaps: string[];
   evidence: string[];
+  rubric: JobRequirementsRubric;
+  requirementMatches: RequirementMatch[];
   model: string;
   latencyMs: number;
 };

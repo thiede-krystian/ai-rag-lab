@@ -82,8 +82,9 @@ an imported PDF after the document is indexed.
 
 Score match uses the current Qdrant collection too. Import or add one document
 as `cv` and one as `job`, then choose both titles in the RAG Chat tab. The API
-loads matching chunks by `sourceType + title`, joins them in chunk order, and
-sends the existing scoring prompt to OpenRouter.
+loads matching chunks by `sourceType + title`, joins them in chunk order,
+extracts a job-specific rubric from the selected job description, and then asks
+OpenRouter to score the CV against that rubric.
 
 The generic `/api/ingest` endpoint remains available for future WYSIWYG import
 flows. It requires an explicit `documents` array and no longer indexes fallback

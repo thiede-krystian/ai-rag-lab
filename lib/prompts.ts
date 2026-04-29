@@ -1,4 +1,4 @@
-import type { PromptVersion, SearchResult } from "@/lib/types";
+import type { JobRequirementsRubric, PromptVersion, SearchResult } from "@/lib/types";
 
 export function buildRagMessages({
   question,
@@ -34,18 +34,23 @@ export function buildRagMessages({
 export function buildMatchScoreMessages({
   candidateProfile,
   jobOffer,
+  rubric,
 }: {
   candidateProfile: string;
   jobOffer: string;
+  rubric: JobRequirementsRubric;
 }) {
   return [
     {
       role: "system" as const,
       content: [
-        "You score how well a candidate profile matches an AI Engineer role.",
-        "Return only valid JSON with keys: score, summary, strengths, gaps, evidence.",
+        "You score how well a candidate profile matches a specific job description.",
+        "Use the supplied job-specific rubric and job description. Do not use a generic AI Engineer checklist.",
+        "Return only valid JSON with keys: score, summary, strengths, gaps, evidence, requirementMatches.",
         "score must be an integer from 0 to 100.",
         "strengths, gaps, and evidence must be arrays of short strings.",
+        "requirementMatches must be an array of objects with keys: requirement, category, status, evidence.",
+        "Each status must be one of: strong, partial, missing.",
       ].join("\n"),
     },
     {
@@ -53,8 +58,37 @@ export function buildMatchScoreMessages({
       content: [
         `Candidate profile:\n${candidateProfile}`,
         `Job offer:\n${jobOffer}`,
-        "Evaluate the match for AI engineering, embeddings, vector search, RAG, prompting, evals, Next.js, Node.js, and TypeScript.",
+        `Extracted job-specific rubric:\n${JSON.stringify(rubric, null, 2)}`,
+        [
+          "Scoring guidance:",
+          "- must-have requirements should dominate the final score.",
+          "- nice-to-have requirements can raise the score, but should not hide missing must-have requirements.",
+          "- domain/context requirements should affect contextual fit without becoming mandatory unless the job description says so.",
+          "- include concrete evidence from the candidate profile whenever possible.",
+        ].join("\n"),
       ].join("\n\n"),
+    },
+  ];
+}
+
+export function buildJobRequirementsMessages({ jobOffer }: { jobOffer: string }) {
+  return [
+    {
+      role: "system" as const,
+      content: [
+        "You extract a job-specific scoring rubric from a job description.",
+        "Return only valid JSON with keys: roleTitle, seniority, mustHave, niceToHave, domainContext.",
+        "mustHave, niceToHave, and domainContext must be arrays of requirement objects.",
+        "Each requirement object must have keys: label, category, importance, evidence.",
+        "category must be one of: must-have, nice-to-have, domain-context.",
+        "importance must be one of: high, medium, low.",
+        "evidence must be an array of short strings grounded in the job description.",
+        "Do not add generic requirements that are not supported by the job description.",
+      ].join("\n"),
+    },
+    {
+      role: "user" as const,
+      content: `Job description:\n${jobOffer}`,
     },
   ];
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createChatCompletion } from "@/lib/ai/chat";
-import { buildMatchScoreMessages } from "@/lib/prompts";
+import { buildJobRequirementsMessages, buildMatchScoreMessages } from "@/lib/prompts";
 import { getDocumentChunks } from "@/lib/qdrant";
-import { parseMatchResponse } from "@/lib/scoring";
+import { parseJobRequirementsResponse, parseMatchResponse } from "@/lib/scoring";
 
 export const runtime = "nodejs";
 
@@ -36,11 +36,22 @@ export async function POST(request: Request) {
       throw new MatchRequestError(`No indexed job document found for title "${input.jobTitle}".`);
     }
 
+    const candidateProfile = joinChunkText(candidateChunks);
+    const jobOffer = joinChunkText(jobChunks);
+    const requirementsCompletion = await createChatCompletion(
+      buildJobRequirementsMessages({
+        jobOffer,
+      }),
+      { temperature: 0.1 },
+    );
+    const rubric = parseJobRequirementsResponse(requirementsCompletion.content);
     const completion = await createChatCompletion(
       buildMatchScoreMessages({
-        candidateProfile: joinChunkText(candidateChunks),
-        jobOffer: joinChunkText(jobChunks),
+        candidateProfile,
+        jobOffer,
+        rubric,
       }),
+      { temperature: 0.1 },
     );
     const parsed = parseMatchResponse(completion.content);
 
@@ -48,6 +59,7 @@ export async function POST(request: Request) {
       cvTitle: input.cvTitle,
       jobTitle: input.jobTitle,
       ...parsed,
+      rubric,
       model: completion.model,
       latencyMs: Date.now() - startedAt,
     });
