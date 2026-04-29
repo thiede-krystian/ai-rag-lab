@@ -8,9 +8,11 @@ import {
   Badge,
   Button,
   Card,
+  Collapse,
   Code,
   Container,
   Divider,
+  Drawer,
   FileInput,
   Group,
   JsonInput,
@@ -35,7 +37,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
-import { useMounted } from "@mantine/hooks";
+import { useMediaQuery, useMounted } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   Bot,
@@ -47,6 +49,7 @@ import {
   FileText,
   Gauge,
   HelpCircle,
+  Info,
   ListChecks,
   Moon,
   Play,
@@ -55,6 +58,8 @@ import {
   Search,
   ShieldAlert,
   Sun,
+  ChevronDown,
+  ChevronUp,
   UploadCloud,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -80,6 +85,9 @@ import type {
 import { CvMakerPanel } from "./cv-maker-panel";
 import { ProductTour, type TourTab } from "./product-tour";
 
+const DOCUMENTS_CHANGED_EVENT = "ai-rag-lab-documents-changed";
+const DEMO_FLOW_COLLAPSED_STORAGE_KEY = "ai-rag-lab-demo-flow-collapsed-v1";
+
 const embeddingProfileOptions = getEmbeddingProfileOptions();
 const embeddingProfileSelectData = embeddingProfileOptions.map((profile) => ({
   value: profile.id,
@@ -97,6 +105,19 @@ const ragPromptOptions = [
   { value: "rag_v1", label: "rag_v1" },
 ];
 
+const navigationItems: Array<{
+  value: TourTab;
+  label: string;
+  icon: typeof FileText;
+}> = [
+  { value: "documents", label: "Documents", icon: FileText },
+  { value: "search", label: "Semantic Search", icon: Search },
+  { value: "chat", label: "RAG Chat", icon: Bot },
+  { value: "evals", label: "Evals", icon: Gauge },
+  { value: "match", label: "CV-job match", icon: ListChecks },
+  { value: "cv", label: "CV Maker", icon: FilePenLine },
+];
+
 type QdrantTarget = "local" | "cloud";
 
 export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
@@ -104,7 +125,12 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
   const [embeddingProfile, setEmbeddingProfile] =
     useState<EmbeddingProfileId>(defaultEmbeddingProfileId);
   const [isTourAutoDisabled, setIsTourAutoDisabled] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isSectionDrawerOpen, setIsSectionDrawerOpen] = useState(false);
   const [tourRunId, setTourRunId] = useState(0);
+  const isCompactNavigation = useMediaQuery("(max-width: 940px)", false, {
+    getInitialValueInEffect: true,
+  });
   const qdrantBadge =
     qdrantTarget === "cloud"
       ? { color: "cyan", label: "Qdrant Cloud" }
@@ -132,6 +158,11 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
     setActiveTab((value as TourTab | null) ?? "documents");
   }, []);
 
+  const handleNavigate = useCallback((tab: TourTab) => {
+    setActiveTab(tab);
+    setIsSectionDrawerOpen(false);
+  }, []);
+
   return (
     <AppShell header={{ height: 72 }} padding="md">
       <ProductTour
@@ -140,32 +171,41 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
         runId={tourRunId}
         setActiveTab={setActiveTab}
       />
+      <ProjectInfoModal
+        opened={isInfoOpen}
+        onClose={() => setIsInfoOpen(false)}
+        qdrantBadge={qdrantBadge}
+      />
       <AppShell.Header>
         <Container size="xl" h="100%">
-          <Group h="100%" justify="space-between">
-            <Group gap="sm" data-tour="app-header">
-              <Database size={28} strokeWidth={1.8} />
-              <div>
-                <Title order={2} size="h3">
+          <Group h="100%" justify="space-between" wrap="nowrap" gap="sm">
+            <Group gap="sm" wrap="nowrap" data-tour="app-header" style={{ minWidth: 0 }}>
+              <Database size={28} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <Title
+                  order={2}
+                  size="h3"
+                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
                   AI RAG Lab
                 </Title>
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed" visibleFrom="md">
                   Next.js, Node.js, Mantine, Qdrant, OpenRouter
                 </Text>
               </div>
             </Group>
-            <Group gap="xs" visibleFrom="sm">
-              <Badge variant="light" color={qdrantBadge.color} data-tour="qdrant-target">
-                {qdrantBadge.label}
-              </Badge>
-              <Badge variant="light" color="blue">
-                OpenRouter embeddings
-              </Badge>
-              <Badge variant="light" color="violet">
-                OpenRouter chat
-              </Badge>
-            </Group>
-            <Group gap="xs">
+            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+              <Tooltip label="Project info">
+                <ActionIcon
+                  aria-label="Project info"
+                  data-tour="project-info-button"
+                  size="lg"
+                  variant="light"
+                  onClick={() => setIsInfoOpen(true)}
+                >
+                  <Info size={18} />
+                </ActionIcon>
+              </Tooltip>
               <GuideMenu
                 isAutoDisabled={isTourAutoDisabled}
                 onStart={handleStartTour}
@@ -180,32 +220,36 @@ export function RagLabShell({ qdrantTarget }: { qdrantTarget: QdrantTarget }) {
       <AppShell.Main>
         <Container size="xl">
           <Tabs value={activeTab} onChange={handleTabChange} keepMounted={false}>
-            <DemoFlowPanel activeTab={activeTab} onNavigate={setActiveTab} />
-            <Tabs.List mb="md">
-              <Tabs.Tab value="documents" leftSection={<FileText size={16} />} data-tour="tab-documents">
-                Documents
-              </Tabs.Tab>
-              <Tabs.Tab value="search" leftSection={<Search size={16} />} data-tour="tab-search">
-                Semantic Search
-              </Tabs.Tab>
-              <Tabs.Tab value="chat" leftSection={<Bot size={16} />} data-tour="tab-chat">
-                RAG Chat
-              </Tabs.Tab>
-              <Tabs.Tab value="evals" leftSection={<Gauge size={16} />} data-tour="tab-evals">
-                Evals
-              </Tabs.Tab>
-              <Tabs.Tab value="match" leftSection={<ListChecks size={16} />} data-tour="tab-match">
-                CV-job match
-              </Tabs.Tab>
-              <Tabs.Tab
-                value="cv"
-                leftSection={<FilePenLine size={16} />}
-                data-tour="tab-cv"
-                style={{ marginLeft: "auto" }}
-              >
-                CV Maker
-              </Tabs.Tab>
-            </Tabs.List>
+            <DemoFlowPanel activeTab={activeTab} onNavigate={handleNavigate} />
+            <div data-tour="section-navigation">
+              {isCompactNavigation ? (
+                <SectionNavigationButton activeTab={activeTab} onOpen={() => setIsSectionDrawerOpen(true)} />
+              ) : (
+                <Tabs.List mb="md">
+                  {navigationItems.map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <Tabs.Tab
+                        key={item.value}
+                        value={item.value}
+                        leftSection={<Icon size={16} />}
+                        data-tour={`tab-${item.value}`}
+                        style={item.value === "cv" ? { marginLeft: "auto" } : undefined}
+                      >
+                        {item.label}
+                      </Tabs.Tab>
+                    );
+                  })}
+                </Tabs.List>
+              )}
+            </div>
+            <SectionDrawer
+              activeTab={activeTab}
+              opened={isSectionDrawerOpen}
+              onClose={() => setIsSectionDrawerOpen(false)}
+              onNavigate={handleNavigate}
+            />
 
             <Tabs.Panel value="documents">
               <DocumentsPanel
@@ -259,6 +303,148 @@ function ColorSchemeToggle() {
   );
 }
 
+function ProjectInfoModal({
+  opened,
+  onClose,
+  qdrantBadge,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  qdrantBadge: { color: string; label: string };
+}) {
+  return (
+    <Modal opened={opened} onClose={onClose} title="Project info" centered size="lg">
+      <Stack gap="md">
+        <div>
+          <Text fw={700}>AI RAG Lab</Text>
+          <Text size="sm" c="dimmed">
+            Demo aplikacja pokazujaca praktyczny workflow AI Engineer: import dokumentow, embeddings,
+            Qdrant retrieval, RAG chat, evals, CV-job match oraz CV Maker.
+          </Text>
+        </div>
+
+        <Group gap="xs">
+          <Badge variant="light">Next.js</Badge>
+          <Badge variant="light">Node.js</Badge>
+          <Badge variant="light">TypeScript</Badge>
+          <Badge variant="light">Mantine UI</Badge>
+          <Badge variant="light" color={qdrantBadge.color}>
+            {qdrantBadge.label}
+          </Badge>
+          <Badge variant="light" color="blue">
+            OpenRouter embeddings
+          </Badge>
+          <Badge variant="light" color="violet">
+            OpenRouter chat
+          </Badge>
+        </Group>
+
+        <Divider />
+
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+          <Paper withBorder radius="md" p="sm">
+            <Text fw={700} size="sm">
+              Retrieval pipeline
+            </Text>
+            <Text size="sm" c="dimmed">
+              PDF/text import -&gt; chunking -&gt; embeddings -&gt; Qdrant vector index -&gt;
+              semantic search and RAG context.
+            </Text>
+          </Paper>
+          <Paper withBorder radius="md" p="sm">
+            <Text fw={700} size="sm">
+              Evaluation and scoring
+            </Text>
+            <Text size="sm" c="dimmed">
+              Evals measure retrieval quality. CV-job match extracts job requirements, then scores a CV
+              against that rubric.
+            </Text>
+          </Paper>
+          <Paper withBorder radius="md" p="sm">
+            <Text fw={700} size="sm">
+              CV Maker
+            </Text>
+            <Text size="sm" c="dimmed">
+              Searchable CV PDFs can be parsed into an editable draft and exported as Markdown or a new
+              A4 PDF.
+            </Text>
+          </Paper>
+          <Paper withBorder radius="md" p="sm">
+            <Text fw={700} size="sm">
+              Runtime
+            </Text>
+            <Text size="sm" c="dimmed">
+              The app can use local Qdrant during development or Qdrant Cloud in deployed environments.
+            </Text>
+          </Paper>
+        </SimpleGrid>
+      </Stack>
+    </Modal>
+  );
+}
+
+function SectionNavigationButton({
+  activeTab,
+  onOpen,
+}: {
+  activeTab: TourTab;
+  onOpen: () => void;
+}) {
+  const activeItem = navigationItems.find((item) => item.value === activeTab) ?? navigationItems[0];
+  const Icon = activeItem.icon;
+
+  return (
+    <Button
+      data-tour="section-navigation-button"
+      fullWidth
+      justify="space-between"
+      leftSection={<Icon size={16} />}
+      mb="md"
+      onClick={onOpen}
+      rightSection={<ChevronDown size={16} />}
+      variant="default"
+    >
+      {activeItem.label}
+    </Button>
+  );
+}
+
+function SectionDrawer({
+  activeTab,
+  onClose,
+  onNavigate,
+  opened,
+}: {
+  activeTab: TourTab;
+  onClose: () => void;
+  onNavigate: (tab: TourTab) => void;
+  opened: boolean;
+}) {
+  return (
+    <Drawer opened={opened} onClose={onClose} position="bottom" title="Sections" size="md">
+      <Stack gap="xs" data-tour="section-navigation-drawer">
+        {navigationItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = item.value === activeTab;
+
+          return (
+            <Button
+              key={item.value}
+              fullWidth
+              justify="flex-start"
+              leftSection={<Icon size={16} />}
+              onClick={() => onNavigate(item.value)}
+              variant={isActive ? "filled" : "subtle"}
+            >
+              {item.label}
+            </Button>
+          );
+        })}
+      </Stack>
+    </Drawer>
+  );
+}
+
 function GuideMenu({
   isAutoDisabled,
   onStart,
@@ -299,11 +485,20 @@ function DemoFlowPanel({
 }) {
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [collapsedPreference, setCollapsedPreference] = useState<boolean | null>(() =>
+    readStoredDemoFlowCollapsedPreference(),
+  );
+  const shouldStartCollapsed = useMediaQuery("(max-width: 767px)", false, {
+    getInitialValueInEffect: true,
+  });
+  const isCollapsed = collapsedPreference ?? shouldStartCollapsed;
   const documentCount = documents.length;
   const hasDocuments = documentCount > 0;
   const hasCv = documents.some((document) => document.sourceType === "cv");
   const hasJob = documents.some((document) => document.sourceType === "job");
   const hasMatchInputs = hasCv && hasJob;
+  const readyLabel = hasMatchInputs ? "CV+Job ready" : hasCv ? "CV ready" : hasJob ? "Job ready" : "Setup needed";
+  const flowStatus = `${documentCount} docs | ${readyLabel}`;
   const steps = [
     {
       cta: hasDocuments ? "Review corpus" : "Import docs",
@@ -346,17 +541,23 @@ function DemoFlowPanel({
     },
   ];
 
-  const loadDocuments = useCallback(async () => {
-    setIsLoading(true);
-
+  const refreshDocuments = useCallback(async () => {
     try {
       setDocuments(await fetchDocumentInventory());
     } catch {
       setDocuments([]);
+    }
+  }, []);
+
+  const loadDocuments = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      await refreshDocuments();
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [refreshDocuments]);
 
   useEffect(() => {
     let isActive = true;
@@ -378,70 +579,106 @@ function DemoFlowPanel({
     };
   }, [activeTab]);
 
+  useEffect(() => {
+    function handleDocumentsChanged() {
+      void refreshDocuments();
+    }
+
+    window.addEventListener(DOCUMENTS_CHANGED_EVENT, handleDocumentsChanged);
+
+    return () => {
+      window.removeEventListener(DOCUMENTS_CHANGED_EVENT, handleDocumentsChanged);
+    };
+  }, [refreshDocuments]);
+
+  function handleToggleCollapsed() {
+    const nextIsCollapsed = !isCollapsed;
+
+    setCollapsedPreference(nextIsCollapsed);
+    window.localStorage.setItem(DEMO_FLOW_COLLAPSED_STORAGE_KEY, String(nextIsCollapsed));
+  }
+
   return (
-    <Paper withBorder radius="md" p="md" mb="md" data-tour="demo-flow-panel">
+    <Paper withBorder radius="md" p="sm" mb="md" data-tour="demo-flow-panel">
       <Stack gap="sm">
-        <Group justify="space-between" align="flex-start">
-          <Group gap="sm">
+        <Group justify="space-between" align="center" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
             <ThemeIcon variant="light" size="lg" radius="md">
               <ListChecks size={18} />
             </ThemeIcon>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <Text fw={700}>Demo flow</Text>
-              <Text size="sm" c="dimmed">
-                Recommended path for showing the AI Engineer workflow end to end.
+              <Text size="sm" c="dimmed" lineClamp={1}>
+                {flowStatus}
               </Text>
             </div>
           </Group>
-          <Button
-            leftSection={<RefreshCw size={16} />}
-            loading={isLoading}
-            onClick={loadDocuments}
-            size="xs"
-            variant="default"
-          >
-            Refresh flow
-          </Button>
+          <Group gap="xs" wrap="nowrap">
+            <Tooltip label="Refresh status">
+              <ActionIcon
+                aria-label="Refresh demo flow status"
+                loading={isLoading}
+                onClick={loadDocuments}
+                variant="default"
+              >
+                <RefreshCw size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={isCollapsed ? "Expand demo flow" : "Collapse demo flow"}>
+              <ActionIcon
+                aria-label={isCollapsed ? "Expand demo flow" : "Collapse demo flow"}
+                onClick={handleToggleCollapsed}
+                variant="light"
+              >
+                {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
 
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }} spacing="xs">
-          {steps.map((step) => {
-            const isActive = activeTab === step.tab;
-            const color = step.done ? "green" : step.disabled ? "gray" : "blue";
+        <Collapse expanded={!isCollapsed}>
+          <Text size="sm" c="dimmed" mb="sm">
+            Recommended path for showing the AI Engineer workflow end to end.
+          </Text>
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="xs">
+            {steps.map((step) => {
+              const isActive = activeTab === step.tab;
+              const color = step.done ? "green" : step.disabled ? "gray" : "blue";
 
-            return (
-              <Paper
-                key={step.label}
-                withBorder
-                radius="md"
-                p="sm"
-                bg={isActive ? "var(--mantine-color-blue-light)" : undefined}
-              >
-                <Stack gap={6}>
-                  <Group gap="xs" wrap="nowrap">
-                    <ThemeIcon color={color} variant="light" size="sm" radius="xl">
-                      {step.done ? <CheckCircle2 size={14} /> : <PlayCircle size={14} />}
-                    </ThemeIcon>
-                    <Text fw={700} size="sm" lineClamp={1}>
-                      {step.label}
+              return (
+                <Paper
+                  key={step.label}
+                  withBorder
+                  radius="md"
+                  p="xs"
+                  bg={isActive ? "var(--mantine-color-blue-light)" : undefined}
+                >
+                  <Stack gap={6}>
+                    <Group gap="xs" wrap="nowrap">
+                      <ThemeIcon color={color} variant="light" size="sm" radius="xl">
+                        {step.done ? <CheckCircle2 size={14} /> : <PlayCircle size={14} />}
+                      </ThemeIcon>
+                      <Text fw={700} size="sm" lineClamp={1}>
+                        {step.label}
+                      </Text>
+                    </Group>
+                    <Text size="xs" c="dimmed" mih={28}>
+                      {step.detail}
                     </Text>
-                  </Group>
-                  <Text size="xs" c="dimmed" mih={32}>
-                    {step.detail}
-                  </Text>
-                  <Button
-                    disabled={step.disabled}
-                    onClick={() => onNavigate(step.tab)}
-                    size="xs"
-                    variant={isActive ? "filled" : "light"}
-                  >
-                    {step.cta}
-                  </Button>
-                </Stack>
-              </Paper>
-            );
-          })}
-        </SimpleGrid>
+                    <Button
+                      disabled={step.disabled}
+                      onClick={() => onNavigate(step.tab)}
+                      size="xs"
+                      variant={isActive ? "filled" : "light"}
+                    >
+                      {step.cta}
+                    </Button>
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </SimpleGrid>
+        </Collapse>
       </Stack>
     </Paper>
   );
@@ -539,6 +776,7 @@ function DocumentsPanel({
       setIngestSummary(`${payload.collection} reset for ${payload.model} (${payload.dimensions}d).`);
       setImportSummary(null);
       setDocumentRows([]);
+      emitDocumentsChanged();
       notifications.show({
         title: "Qdrant collection reset",
         message: `${payload.collection} recreated with ${payload.dimensions} dimensions`,
@@ -617,6 +855,7 @@ function DocumentsPanel({
       setImportSummary(payload);
       setIngestSummary(summary);
       await loadDocuments();
+      emitDocumentsChanged();
       setIsImportOpen(false);
       notifications.show({
         title: "PDF imported",
@@ -701,6 +940,7 @@ function DocumentsPanel({
       setIngestSummary(summary);
       setImportSummary(null);
       await loadDocuments();
+      emitDocumentsChanged();
       setIsTextDocumentOpen(false);
       notifications.show({
         title: "Text document indexed",
@@ -2033,6 +2273,28 @@ async function fetchDocumentInventory() {
   }
 
   return payload.documents;
+}
+
+function emitDocumentsChanged() {
+  window.dispatchEvent(new Event(DOCUMENTS_CHANGED_EVENT));
+}
+
+function readStoredDemoFlowCollapsedPreference() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored = window.localStorage.getItem(DEMO_FLOW_COLLAPSED_STORAGE_KEY);
+
+  if (stored === "true") {
+    return true;
+  }
+
+  if (stored === "false") {
+    return false;
+  }
+
+  return null;
 }
 
 function getTitleFromFilename(filename: string) {

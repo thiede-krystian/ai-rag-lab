@@ -48,11 +48,19 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "bottom",
   },
   {
-    target: "qdrant-target",
+    target: "project-info-button",
     tab: "documents",
-    title: "Active Qdrant target",
+    title: "Project info",
     description:
-      "This badge shows whether the app is indexing and searching against local Qdrant or Qdrant Cloud from the current environment.",
+      "Use this topbar button to inspect the project stack, active Qdrant target, OpenRouter usage, and the AI workflow.",
+    side: "bottom",
+  },
+  {
+    target: "section-navigation",
+    tab: "documents",
+    title: "Sections",
+    description:
+      "On desktop this is a tab row. On smaller screens it becomes a Section button that opens a bottom drawer.",
     side: "bottom",
   },
   {
@@ -104,6 +112,14 @@ const TOUR_STEPS: ProductTourStep[] = [
     side: "top",
   },
   {
+    target: "evals-form",
+    tab: "evals",
+    title: "Retrieval quality check",
+    description:
+      "Choose an expected document and queries, then inspect Recall@K, MRR, pass rate, and latency.",
+    side: "bottom",
+  },
+  {
     target: "tab-match",
     tab: "match",
     title: "CV-job match tab",
@@ -118,14 +134,6 @@ const TOUR_STEPS: ProductTourStep[] = [
     description:
       "Select one CV document and one Job document from Qdrant, then score the fit against requirements extracted from the job description.",
     side: "top",
-  },
-  {
-    target: "evals-form",
-    tab: "evals",
-    title: "Retrieval quality check",
-    description:
-      "Choose an expected document and queries, then inspect Recall@K, MRR, pass rate, and latency.",
-    side: "bottom",
   },
   {
     target: "tab-cv",
