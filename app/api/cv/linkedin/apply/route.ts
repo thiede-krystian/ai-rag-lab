@@ -1,0 +1,34 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { applyLinkedInSuggestions } from "@/lib/cv/linkedin/diff";
+
+export const runtime = "nodejs";
+
+const requestSchema = z.object({
+  draft: z.unknown(),
+  suggestions: z.array(z.unknown()),
+});
+
+export async function POST(request: Request) {
+  try {
+    const payload = requestSchema.parse(await request.json());
+
+    return NextResponse.json({
+      draft: applyLinkedInSuggestions(payload.draft, payload.suggestions),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0]?.message ?? "Invalid LinkedIn apply request." },
+        { status: 400 },
+      );
+    }
+
+    console.error("[api/cv/linkedin/apply] failed", error);
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown LinkedIn apply error" },
+      { status: 500 },
+    );
+  }
+}

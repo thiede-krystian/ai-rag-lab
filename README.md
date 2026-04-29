@@ -34,6 +34,7 @@ docker compose up -d
 4. OpenRouter RAG chat and CV-job match scoring
 5. Searchable PDF import and manual text documents with append/replace modes
 6. Qdrant document inventory and PDF retrieval evals
+7. CV Maker with PDF import, Markdown/PDF export, and LinkedIn comparison
 
 ## Embedding Profiles
 
@@ -89,6 +90,17 @@ OpenRouter to score the CV against that rubric.
 The generic `/api/ingest` endpoint remains available for future WYSIWYG import
 flows. It requires an explicit `documents` array and no longer indexes fallback
 demo data.
+
+## CV Maker And LinkedIn Compare
+
+CV Maker is local to the browser and does not index data in Qdrant. It can
+import a searchable CV PDF, build an editable draft, optionally improve parsing
+with OpenRouter, and export the result as Markdown or PDF.
+
+`Compare with LinkedIn` does not log in to LinkedIn, scrape profiles, or update
+LinkedIn. Provide data manually through the official LinkedIn data export ZIP/CSV
+or pasted profile text. The app parses that input, compares it with the current
+CV draft, and applies only the suggestions you explicitly select.
 
 ## Evals
 
