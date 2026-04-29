@@ -1,19 +1,21 @@
+import { orderCvDraftForExport } from "@/lib/cv/export-order";
 import type { CvDraft } from "@/lib/cv/types";
 
 export function cvDraftToMarkdown(draft: CvDraft) {
+  const orderedDraft = orderCvDraftForExport(draft);
   const lines: string[] = [];
 
-  pushHeading(lines, draft.personal.name || "CV", 1);
-  pushText(lines, draft.personal.headline);
-  pushContact(lines, draft);
-  pushSection(lines, "Summary", draft.summary);
-  pushSection(lines, "Aspirations", draft.aspirations);
-  pushListSection(lines, "Skills", draft.skills);
-  pushExperience(lines, draft);
-  pushProjects(lines, draft);
-  pushEducation(lines, draft);
-  pushListSection(lines, "Certifications", draft.certifications);
-  pushListSection(lines, "Languages", draft.languages);
+  pushHeading(lines, orderedDraft.personal.name || "CV", 1);
+  pushText(lines, orderedDraft.personal.headline);
+  pushContact(lines, orderedDraft);
+  pushSection(lines, "Summary", orderedDraft.summary);
+  pushSection(lines, "Aspirations", orderedDraft.aspirations);
+  pushListSection(lines, "Skills", orderedDraft.skills);
+  pushExperience(lines, orderedDraft);
+  pushProjects(lines, orderedDraft);
+  pushEducation(lines, orderedDraft);
+  pushListSection(lines, "Certifications", orderedDraft.certifications);
+  pushListSection(lines, "Languages", orderedDraft.languages);
 
   return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
 }

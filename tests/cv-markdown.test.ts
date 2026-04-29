@@ -39,4 +39,59 @@ describe("CV Markdown export", () => {
     expect(markdown).toContain("### AI Engineer - Product Lab");
     expect(markdown).toContain("- Built semantic search.");
   });
+
+  it("exports dated sections from newest to oldest", () => {
+    const markdown = cvDraftToMarkdown({
+      personal: {
+        name: "Krystian Thiede",
+        headline: "AI Engineer",
+        email: "",
+        phone: "",
+        location: "",
+        website: "",
+        links: [],
+      },
+      summary: "",
+      aspirations: "",
+      skills: [],
+      experience: [
+        {
+          role: "Older Role",
+          company: "OldCo",
+          location: "",
+          period: "2015 - 2017",
+          bullets: [],
+        },
+        {
+          role: "Current Role",
+          company: "NowCo",
+          location: "",
+          period: "APR. 2023 - now",
+          bullets: [],
+        },
+      ],
+      projects: [
+        {
+          name: "Older Project",
+          description: "older.example | 2015 - 2017 Built a store.",
+          technologies: [],
+        },
+        {
+          name: "Newer Project",
+          description: "newer.example | 2015 - 2019 Built a job fair site.",
+          technologies: [],
+        },
+      ],
+      education: [
+        { school: "Older University", degree: "", period: "2001 - 2004", details: "" },
+        { school: "Newer University", degree: "", period: "2004 - 2008", details: "" },
+      ],
+      certifications: [],
+      languages: [],
+    } satisfies CvDraft);
+
+    expect(markdown.indexOf("Current Role")).toBeLessThan(markdown.indexOf("Older Role"));
+    expect(markdown.indexOf("Newer Project")).toBeLessThan(markdown.indexOf("Older Project"));
+    expect(markdown.indexOf("Newer University")).toBeLessThan(markdown.indexOf("Older University"));
+  });
 });

@@ -7,11 +7,12 @@ import {
   renderToBuffer,
 } from "@react-pdf/renderer";
 import type { ReactNode } from "react";
+import { orderCvDraftForExport } from "@/lib/cv/export-order";
 import { getCvDensityProfile } from "@/lib/cv/pdf-density";
 import type { CvDraft, CvTemplateId } from "@/lib/cv/types";
 
 export async function renderCvPdf(draft: CvDraft, template: CvTemplateId = "three-column-a4") {
-  const document = getCvPdfDocument(draft, template);
+  const document = getCvPdfDocument(orderCvDraftForExport(draft), template);
 
   return renderToBuffer(document);
 }
