@@ -579,94 +579,67 @@ export function CvMakerPanel() {
         hasLinkedInProfile={hasLinkedInProfile}
         hasStructuredDraft={hasStructuredDraft}
       />
-      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-        <Card withBorder radius="md" padding="lg" data-tour="cv-import">
-          <Stack gap="md">
-            <Group justify="space-between" align="flex-start">
-              <Group gap="sm" align="flex-start" wrap="nowrap">
-                <StepNumberBadge value={1} />
-                <div>
-                  <Title order={3} size="h4">
-                    Import CV PDF
-                  </Title>
-                  <Text size="sm" c="dimmed" mt={4}>
-                    Start from a searchable PDF. This does not index anything in Qdrant.
-                  </Text>
-                </div>
-              </Group>
-              <Group gap="xs">
-                {sourceExtractionMode ? <Badge variant="light">{sourceExtractionMode}</Badge> : null}
-                {sourceFilename ? <Badge variant="light">{sourceFilename}</Badge> : null}
-              </Group>
+      <Card withBorder radius="md" padding="lg" data-tour="cv-import">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Group gap="sm" align="flex-start" wrap="nowrap">
+              <StepNumberBadge value={1} />
+              <div>
+                <Title order={3} size="h4">
+                  Import CV PDF
+                </Title>
+                <Text size="sm" c="dimmed" mt={4}>
+                  Start from a searchable PDF. This does not index anything in Qdrant.
+                </Text>
+              </div>
             </Group>
-            <FileInput
-              accept="application/pdf"
-              clearable
-              label="CV PDF"
+            <Group gap="xs">
+              {sourceExtractionMode ? <Badge variant="light">{sourceExtractionMode}</Badge> : null}
+              {sourceFilename ? <Badge variant="light">{sourceFilename}</Badge> : null}
+            </Group>
+          </Group>
+          <FileInput
+            accept="application/pdf"
+            clearable
+            label="CV PDF"
+            leftSection={<UploadCloud size={16} />}
+            onChange={setImportFile}
+            placeholder="Choose searchable CV PDF"
+            value={importFile}
+          />
+          <Group>
+            <Button
               leftSection={<UploadCloud size={16} />}
-              onChange={setImportFile}
-              placeholder="Choose searchable CV PDF"
-              value={importFile}
-            />
-            <Group>
-              <Button
-                leftSection={<UploadCloud size={16} />}
-                loading={isImporting}
-                onClick={handleImportPdf}
-              >
-                Import PDF
-              </Button>
-              <Button color="red" leftSection={<Trash2 size={16} />} onClick={handleClearDraft} variant="light">
-                Clear draft
-              </Button>
-            </Group>
-            <Alert color="blue" variant="light">
-              The first pass uses local layout-aware heuristics. Use AI parsing only if you want to send the
-              extracted CV text to OpenRouter for better structure.
-            </Alert>
-            <Accordion variant="contained">
-              <Accordion.Item value="source-text">
-                <Accordion.Control>Advanced details: extracted text preview</Accordion.Control>
-                <Accordion.Panel>
-                  <Textarea
-                    autosize
-                    label="Extracted text preview"
-                    minRows={10}
-                    placeholder="Extracted CV text will appear here after PDF import"
-                    readOnly
-                    value={sourceText}
-                  />
-                </Accordion.Panel>
-              </Accordion.Item>
-            </Accordion>
-          </Stack>
-        </Card>
-
-        <LinkedInCompareCard
-          differences={visibleLinkedInDifferences}
-          differenceFilter={differenceFilter}
-          file={linkedInFile}
-          isApplying={isApplyingLinkedIn}
-          isComparing={isComparingLinkedIn}
-          isImporting={isImportingLinkedIn}
-          onApplySelected={handleApplyLinkedInSuggestions}
-          onCompare={() => handleCompareLinkedIn()}
-          onCopySelected={handleCopySelectedLinkedInSuggestions}
-          onDifferenceFilterChange={setDifferenceFilter}
-          onFileChange={setLinkedInFile}
-          onIgnoreSelected={handleIgnoreSelectedLinkedInSuggestions}
-          onImport={handleImportLinkedInData}
-          onSelectedSuggestionIdsChange={setSelectedLinkedInSuggestionIds}
-          onTextChange={setLinkedInText}
-          parsedFiles={linkedInParsedFiles}
-          profile={linkedInProfile}
-          selectedSuggestionIds={selectedLinkedInSuggestionIds}
-          source={linkedInSource}
-          suggestions={linkedInSuggestions}
-          text={linkedInText}
-          warnings={linkedInWarnings}
-        />
-      </SimpleGrid>
+              loading={isImporting}
+              onClick={handleImportPdf}
+            >
+              Import PDF
+            </Button>
+            <Button color="red" leftSection={<Trash2 size={16} />} onClick={handleClearDraft} variant="light">
+              Clear draft
+            </Button>
+          </Group>
+          <Alert color="blue" variant="light">
+            The first pass uses local layout-aware heuristics. Use AI parsing only if you want to send the
+            extracted CV text to OpenRouter for better structure.
+          </Alert>
+          <Accordion variant="contained">
+            <Accordion.Item value="source-text">
+              <Accordion.Control>Advanced details: extracted text preview</Accordion.Control>
+              <Accordion.Panel>
+                <Textarea
+                  autosize
+                  label="Extracted text preview"
+                  minRows={10}
+                  placeholder="Extracted CV text will appear here after PDF import"
+                  readOnly
+                  value={sourceText}
+                />
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
+        </Stack>
+      </Card>
 
       <Card withBorder radius="md" padding="lg" data-tour="cv-editor">
         <Stack gap="lg">
@@ -816,7 +789,32 @@ export function CvMakerPanel() {
         </Stack>
       </Card>
 
-      <Card withBorder radius="md" padding="lg" data-tour="cv-export" style={{ alignSelf: "start" }}>
+      <LinkedInCompareCard
+        differences={visibleLinkedInDifferences}
+        differenceFilter={differenceFilter}
+        file={linkedInFile}
+        isApplying={isApplyingLinkedIn}
+        isComparing={isComparingLinkedIn}
+        isImporting={isImportingLinkedIn}
+        onApplySelected={handleApplyLinkedInSuggestions}
+        onCompare={() => handleCompareLinkedIn()}
+        onCopySelected={handleCopySelectedLinkedInSuggestions}
+        onDifferenceFilterChange={setDifferenceFilter}
+        onFileChange={setLinkedInFile}
+        onIgnoreSelected={handleIgnoreSelectedLinkedInSuggestions}
+        onImport={handleImportLinkedInData}
+        onSelectedSuggestionIdsChange={setSelectedLinkedInSuggestionIds}
+        onTextChange={setLinkedInText}
+        parsedFiles={linkedInParsedFiles}
+        profile={linkedInProfile}
+        selectedSuggestionIds={selectedLinkedInSuggestionIds}
+        source={linkedInSource}
+        suggestions={linkedInSuggestions}
+        text={linkedInText}
+        warnings={linkedInWarnings}
+      />
+
+      <Card withBorder radius="md" padding="lg" data-tour="cv-export">
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">
             <Group gap="sm" align="flex-start" wrap="nowrap">
@@ -919,7 +917,7 @@ function EditableExperienceSection({
     <Fieldset legend="Experience">
       <Stack gap="sm">
         {draft.experience.map((item, index) => (
-          <Stack key={`${item.role}-${item.company}-${index}`} gap="sm">
+          <Stack key={`experience-${index}`} gap="sm">
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
               <TextInput
                 label="Role"
@@ -1413,7 +1411,7 @@ function EditableProjectsSection({
     <Fieldset legend="Projects">
       <Stack gap="sm">
         {draft.projects.map((project, index) => (
-          <Stack key={`${project.name}-${index}`} gap="sm">
+          <Stack key={`project-${index}`} gap="sm">
             <TextInput
               label="Name"
               onChange={(event) => updateProject(index, { name: event.currentTarget.value })}
@@ -1481,7 +1479,7 @@ function EditableEducationSection({
     <Fieldset legend="Education">
       <Stack gap="sm">
         {draft.education.map((item, index) => (
-          <Stack key={`${item.school}-${index}`} gap="sm">
+          <Stack key={`education-${index}`} gap="sm">
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
               <TextInput
                 label="School"

@@ -20,6 +20,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  Popover,
   Progress,
   Radio,
   Select,
@@ -104,6 +105,8 @@ const ragPromptOptions = [
   { value: "rag_strict_v2", label: "rag_strict_v2" },
   { value: "rag_v1", label: "rag_v1" },
 ];
+
+const alignedFormLabelHeight = 46;
 
 const navigationItems: Array<{
   value: TourTab;
@@ -318,8 +321,8 @@ function ProjectInfoModal({
         <div>
           <Text fw={700}>AI RAG Lab</Text>
           <Text size="sm" c="dimmed">
-            Demo aplikacja pokazujaca praktyczny workflow AI Engineer: import dokumentow, embeddings,
-            Qdrant retrieval, RAG chat, evals, CV-job match oraz CV Maker.
+            A demo application showing a practical AI Engineer workflow: document import, embeddings,
+            Qdrant retrieval, RAG chat, retrieval evals, CV-job match, and CV Maker.
           </Text>
         </div>
 
@@ -362,11 +365,11 @@ function ProjectInfoModal({
           </Paper>
           <Paper withBorder radius="md" p="sm">
             <Text fw={700} size="sm">
-              CV Maker
+              CV Maker and LinkedIn comparison
             </Text>
             <Text size="sm" c="dimmed">
-              Searchable CV PDFs can be parsed into an editable draft and exported as Markdown or a new
-              A4 PDF.
+              Searchable CV PDFs can be parsed into an editable draft, optionally improved with AI,
+              compared with user-provided LinkedIn export data, and exported as Markdown or a new A4 PDF.
             </Text>
           </Paper>
           <Paper withBorder radius="md" p="sm">
@@ -539,6 +542,13 @@ function DemoFlowPanel({
       label: "5. CV-job match",
       tab: "match" as TourTab,
     },
+    {
+      cta: "Open CV Maker",
+      detail: "AI-assisted CV polish, LinkedIn compare and export",
+      done: false,
+      label: "6. CV Maker",
+      tab: "cv" as TourTab,
+    },
   ];
 
   const refreshDocuments = useCallback(async () => {
@@ -640,7 +650,7 @@ function DemoFlowPanel({
           <Text size="sm" c="dimmed" mb="sm">
             Recommended path for showing the AI Engineer workflow end to end.
           </Text>
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="xs">
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 6 }} spacing="xs">
             {steps.map((step) => {
               const isActive = activeTab === step.tab;
               const color = step.done ? "green" : step.disabled ? "gray" : "blue";
@@ -711,7 +721,6 @@ function DocumentsPanel({
   const [textSourceType, setTextSourceType] = useState<SourceType>("knowledge");
   const [textTags, setTextTags] = useState<string[]>(["manual"]);
   const [textMode, setTextMode] = useState<ImportMode>("append");
-  const selectedProfile = embeddingProfileOptions.find((profile) => profile.id === embeddingProfile);
   const documentChunkCount = documentRows.reduce((sum, row) => sum + row.chunks, 0);
 
   const loadDocuments = useCallback(async () => {
@@ -993,15 +1002,9 @@ function DocumentsPanel({
               Corpus
             </Title>
             <Group align="flex-end">
-              <Select
-                label="Embedding profile"
-                data-tour="embedding-profile"
-                onChange={(value) =>
-                  onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
-                }
-                value={embeddingProfile}
-                data={embeddingProfileSelectData}
-                w={230}
+              <EmbeddingProfileSelectWithInfo
+                embeddingProfile={embeddingProfile}
+                onEmbeddingProfileChange={onEmbeddingProfileChange}
               />
               <Group align="flex-end" gap="xs" data-tour="collection-actions">
                 <Button
@@ -1037,20 +1040,6 @@ function DocumentsPanel({
               </Button>
             </Group>
           </Group>
-          {selectedProfile ? (
-            <Accordion variant="contained">
-              <Accordion.Item value="embedding-details">
-                <Accordion.Control>Advanced details: embedding model and vector dimensions</Accordion.Control>
-                <Accordion.Panel>
-                  <Alert color="blue" variant="light">
-                    {selectedProfile.description} Model: <Code>{selectedProfile.model}</Code>, dimensions:{" "}
-                    <Code>{selectedProfile.dimensions}</Code>. Use the same profile for all documents in one Qdrant
-                    collection.
-                  </Alert>
-                </Accordion.Panel>
-              </Accordion.Item>
-            </Accordion>
-          ) : null}
           {ingestSummary ? (
             <Alert color="green" variant="light">
               {ingestSummary}
@@ -1294,6 +1283,139 @@ function DocumentsPanel({
   );
 }
 
+function EmbeddingProfileSelectWithInfo({
+  embeddingProfile,
+  onEmbeddingProfileChange,
+}: {
+  embeddingProfile: EmbeddingProfileId;
+  onEmbeddingProfileChange: (profile: EmbeddingProfileId) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedProfile = embeddingProfileOptions.find((profile) => profile.id === embeddingProfile);
+
+  return (
+    <Popover
+      opened={isOpen}
+      position="top"
+      shadow="md"
+      width={360}
+      withArrow
+      onChange={setIsOpen}
+    >
+      <Popover.Target>
+        <div
+          data-tour="embedding-profile"
+          onBlur={() => setIsOpen(false)}
+          onFocus={() => setIsOpen(true)}
+          onMouseEnter={() => setIsOpen(true)}
+          onMouseLeave={() => setIsOpen(false)}
+        >
+          <Select
+            data={embeddingProfileSelectData}
+            label="Embedding profile"
+            onChange={(value) =>
+              onEmbeddingProfileChange((value as EmbeddingProfileId | null) ?? defaultEmbeddingProfileId)
+            }
+            value={embeddingProfile}
+            w={230}
+          />
+        </div>
+      </Popover.Target>
+      <Popover.Dropdown>
+        {selectedProfile ? (
+          <Stack gap={6}>
+            <Text fw={700} size="sm">
+              {selectedProfile.label}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {selectedProfile.description}
+            </Text>
+            <Group gap="xs">
+              <Badge variant="light">Model: {selectedProfile.model}</Badge>
+              <Badge variant="light">{selectedProfile.dimensions} dimensions</Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Use one embedding profile per Qdrant collection. Changing dimensions requires a
+              collection reset before importing new chunks.
+            </Text>
+          </Stack>
+        ) : null}
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+function AlignedFormRow({
+  children,
+  dataTour,
+  templateColumns,
+}: {
+  children: ReactNode;
+  dataTour?: string;
+  templateColumns: string;
+}) {
+  const isStacked = useMediaQuery("(max-width: 767px)", false, {
+    getInitialValueInEffect: true,
+  });
+
+  return (
+    <div
+      data-tour={dataTour}
+      style={{
+        alignItems: "end",
+        display: "grid",
+        gap: "var(--mantine-spacing-sm)",
+        gridTemplateColumns: isStacked ? "1fr" : templateColumns,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function AlignedFormField({
+  children,
+  description,
+  label,
+}: {
+  children: ReactNode;
+  description?: string;
+  label: string;
+}) {
+  const isStacked = useMediaQuery("(max-width: 767px)", false, {
+    getInitialValueInEffect: true,
+  });
+
+  return (
+    <Stack gap={4}>
+      <Stack gap={0} mih={isStacked ? undefined : alignedFormLabelHeight} justify="flex-start">
+        <Text fw={600} size="sm">
+          {label}
+        </Text>
+        {description ? (
+          <Text size="xs" c="dimmed" lineClamp={2}>
+            {description}
+          </Text>
+        ) : null}
+      </Stack>
+      {children}
+    </Stack>
+  );
+}
+
+function AlignedFormAction({ children }: { children: ReactNode }) {
+  const isStacked = useMediaQuery("(max-width: 767px)", false, {
+    getInitialValueInEffect: true,
+  });
+
+  return (
+    <Stack gap={4}>
+      {isStacked ? null : <div style={{ minHeight: alignedFormLabelHeight }} />}
+      {children}
+    </Stack>
+  );
+}
+
 function SearchPanel({
   embeddingProfile,
   onNavigate,
@@ -1350,34 +1472,39 @@ function SearchPanel({
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group align="flex-end" data-tour="search-form">
-            <Textarea
+          <AlignedFormRow dataTour="search-form" templateColumns="minmax(0, 1fr) 110px max-content">
+            <AlignedFormField
               label="Query"
               description="Describe intent, skills, or evidence you want to retrieve from indexed chunks."
-              autosize
-              minRows={2}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-              value={query}
-              style={{ flex: 1 }}
-            />
-            <NumberInput
-              description="Chunks"
-              label="TopK"
-              min={1}
-              max={20}
-              onChange={setTopK}
-              value={topK}
-              w={110}
-            />
-            <Button
-              leftSection={<Search size={16} />}
-              loading={isSearching}
-              onClick={handleSearch}
-              data-tour="search-button"
             >
-              Search
-            </Button>
-          </Group>
+              <Textarea
+                aria-label="Search query"
+                autosize
+                minRows={2}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+                value={query}
+              />
+            </AlignedFormField>
+            <AlignedFormField label="TopK" description="Chunks">
+              <NumberInput
+                aria-label="Search TopK"
+                min={1}
+                max={20}
+                onChange={setTopK}
+                value={topK}
+              />
+            </AlignedFormField>
+            <AlignedFormAction>
+              <Button
+                leftSection={<Search size={16} />}
+                loading={isSearching}
+                onClick={handleSearch}
+                data-tour="search-button"
+              >
+                Search
+              </Button>
+            </AlignedFormAction>
+          </AlignedFormRow>
           <Divider />
           <Stack gap="sm" data-tour="search-results">
             {results.length > 0 ? (
@@ -1478,42 +1605,47 @@ function ChatPanel({
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
-          <Group align="flex-end" data-tour="chat-form">
-            <Textarea
+          <AlignedFormRow dataTour="chat-form" templateColumns="minmax(0, 1fr) 190px 110px max-content">
+            <AlignedFormField
               label="Question"
               description="Ask a question that should be answered from indexed documents, not model memory."
-              autosize
-              minRows={2}
-              onChange={(event) => setQuestion(event.currentTarget.value)}
-              value={question}
-              style={{ flex: 1 }}
-            />
-            <Select
-              label="Prompt"
-              description="Prompt version"
-              onChange={(value) => setPromptVersion((value as PromptVersion | null) ?? "rag_strict_v2")}
-              value={promptVersion}
-              data={ragPromptOptions}
-              w={190}
-            />
-            <NumberInput
-              description="Chunks"
-              label="TopK"
-              min={1}
-              max={20}
-              onChange={setTopK}
-              value={topK}
-              w={110}
-            />
-            <Button
-              leftSection={<Bot size={16} />}
-              loading={isAsking}
-              onClick={handleAsk}
-              data-tour="chat-button"
             >
-              Ask
-            </Button>
-          </Group>
+              <Textarea
+                aria-label="RAG question"
+                autosize
+                minRows={2}
+                onChange={(event) => setQuestion(event.currentTarget.value)}
+                value={question}
+              />
+            </AlignedFormField>
+            <AlignedFormField label="Prompt" description="Prompt version">
+              <Select
+                aria-label="RAG prompt version"
+                data={ragPromptOptions}
+                onChange={(value) => setPromptVersion((value as PromptVersion | null) ?? "rag_strict_v2")}
+                value={promptVersion}
+              />
+            </AlignedFormField>
+            <AlignedFormField label="TopK" description="Chunks">
+              <NumberInput
+                aria-label="RAG TopK"
+                min={1}
+                max={20}
+                onChange={setTopK}
+                value={topK}
+              />
+            </AlignedFormField>
+            <AlignedFormAction>
+              <Button
+                leftSection={<Bot size={16} />}
+                loading={isAsking}
+                onClick={handleAsk}
+                data-tour="chat-button"
+              >
+                Ask
+              </Button>
+            </AlignedFormAction>
+          </AlignedFormRow>
           <Paper withBorder radius="md" p="md" data-tour="rag-answer">
             {chatResponse ? (
               <Stack gap="sm">
@@ -1704,34 +1836,38 @@ function MatchPanel() {
             Refresh documents
           </Button>
         </Group>
-        <Group align="flex-end">
-          <Select
-            data={cvOptions}
-            label="CV document"
-            onChange={setCvTitle}
-            placeholder="Import a CV PDF first"
-            searchable
-            value={selectedCvTitle}
-            style={{ flex: 1 }}
-          />
-          <Select
-            data={jobOptions}
-            label="Job document"
-            onChange={setJobTitle}
-            placeholder="Import or add a Job document first"
-            searchable
-            value={selectedJobTitle}
-            style={{ flex: 1 }}
-          />
-          <Button
-            loading={isScoring}
-            onClick={handleScoreMatch}
-            variant="light"
-            data-tour="score-match-button"
-          >
-            Score match
-          </Button>
-        </Group>
+        <AlignedFormRow templateColumns="minmax(0, 1fr) minmax(0, 1fr) max-content">
+          <AlignedFormField label="CV document" description="Indexed sourceType: CV">
+            <Select
+              aria-label="CV document"
+              data={cvOptions}
+              onChange={setCvTitle}
+              placeholder="Import a CV PDF first"
+              searchable
+              value={selectedCvTitle}
+            />
+          </AlignedFormField>
+          <AlignedFormField label="Job document" description="Indexed sourceType: Job">
+            <Select
+              aria-label="Job document"
+              data={jobOptions}
+              onChange={setJobTitle}
+              placeholder="Import or add a Job document first"
+              searchable
+              value={selectedJobTitle}
+            />
+          </AlignedFormField>
+          <AlignedFormAction>
+            <Button
+              loading={isScoring}
+              onClick={handleScoreMatch}
+              variant="light"
+              data-tour="score-match-button"
+            >
+              Score match
+            </Button>
+          </AlignedFormAction>
+        </AlignedFormRow>
         {cvOptions.length === 0 || jobOptions.length === 0 ? (
           <Alert color="blue" variant="light">
             Score match needs at least one indexed CV document and one indexed Job document.
@@ -2080,35 +2216,35 @@ function EvalsPanel({
             </Group>
           </Group>
           <Stack gap="md" data-tour="evals-form">
-            <Group align="flex-end">
-              <Select
-                data={documentOptions}
-                label="Expected document"
-                description="Document that should appear in TopK"
-                onChange={setTargetTitle}
-                placeholder="Choose indexed document"
-                searchable
-                value={selectedTargetTitle}
-                style={{ flex: 1 }}
-              />
-              <Select
-                data={sourceTypeSelectData}
-                label="Source type"
-                description="Filter inventory"
-                onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
-                value={sourceType}
-                w={160}
-              />
-              <NumberInput
-                description="Retrieval depth"
-                label="TopK"
-                min={1}
-                max={20}
-                onChange={setTopK}
-                value={topK}
-                w={130}
-              />
-            </Group>
+            <AlignedFormRow templateColumns="minmax(0, 1fr) 160px 130px">
+              <AlignedFormField label="Expected document" description="Document that should appear in TopK">
+                <Select
+                  aria-label="Expected document"
+                  data={documentOptions}
+                  onChange={setTargetTitle}
+                  placeholder="Choose indexed document"
+                  searchable
+                  value={selectedTargetTitle}
+                />
+              </AlignedFormField>
+              <AlignedFormField label="Source type" description="Filter inventory">
+                <Select
+                  aria-label="Eval source type"
+                  data={sourceTypeSelectData}
+                  onChange={(value) => setSourceType((value as SourceType | null) ?? "cv")}
+                  value={sourceType}
+                />
+              </AlignedFormField>
+              <AlignedFormField label="TopK" description="Retrieval depth">
+                <NumberInput
+                  aria-label="Eval TopK"
+                  min={1}
+                  max={20}
+                  onChange={setTopK}
+                  value={topK}
+                />
+              </AlignedFormField>
+            </AlignedFormRow>
             <Textarea
               label="Queries"
               description="One query per line. Each query should represent evidence you expect in the selected document."
