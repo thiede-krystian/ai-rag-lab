@@ -63,7 +63,12 @@ function CvPdfDocument({ draft, styleSet }: { draft: CvDraft; styleSet: CvPdfSty
           <Text style={styles.bodyText}>{draft.skills.join(" · ")}</Text>
         </Section>
 
-        <Section styles={styles} title="Experience" visible={draft.experience.length > 0}>
+        <Section
+          minPresenceAhead={classicSectionMinPresenceAhead.experience}
+          styles={styles}
+          title="Experience"
+          visible={draft.experience.length > 0}
+        >
           {draft.experience.map((item, index) => (
             <View key={`${item.role}-${item.company}-${index}`} style={styles.item}>
               <Text style={styles.itemTitle}>{[item.role, item.company].filter(Boolean).join(" · ")}</Text>
@@ -77,7 +82,12 @@ function CvPdfDocument({ draft, styleSet }: { draft: CvDraft; styleSet: CvPdfSty
           ))}
         </Section>
 
-        <Section styles={styles} title="Projects" visible={draft.projects.length > 0}>
+        <Section
+          minPresenceAhead={classicSectionMinPresenceAhead.projects}
+          styles={styles}
+          title="Projects"
+          visible={draft.projects.length > 0}
+        >
           {draft.projects.map((project, index) => (
             <View key={`${project.name}-${index}`} style={styles.item}>
               <Text style={styles.itemTitle}>{project.name || "Project"}</Text>
@@ -89,7 +99,12 @@ function CvPdfDocument({ draft, styleSet }: { draft: CvDraft; styleSet: CvPdfSty
           ))}
         </Section>
 
-        <Section styles={styles} title="Education" visible={draft.education.length > 0}>
+        <Section
+          minPresenceAhead={classicSectionMinPresenceAhead.education}
+          styles={styles}
+          title="Education"
+          visible={draft.education.length > 0}
+        >
           {draft.education.map((item, index) => (
             <View key={`${item.school}-${index}`} style={styles.item}>
               <Text style={styles.itemTitle}>{[item.degree, item.school].filter(Boolean).join(" · ")}</Text>
@@ -134,9 +149,11 @@ function ThreeColumnCvPdfDocument({ draft, styleSet }: { draft: CvDraft; styleSe
           <View style={threeColumnStyles.separator} />
 
           <View style={threeColumnStyles.mainColumn}>
-            <Text style={threeColumnStyles.columnTitle}>
-              {pageIndex === 0 ? "Experience" : "Experience continued"}
-            </Text>
+            {getExperienceColumnTitle(page, pageIndex) ? (
+              <Text style={threeColumnStyles.columnTitle}>
+                {getExperienceColumnTitle(page, pageIndex)}
+              </Text>
+            ) : null}
             {page.experience.map((item, index) => (
               <View
                 key={`experience-page-${pageIndex}-${item.originalIndex}-${index}`}
@@ -197,11 +214,13 @@ function ThreeColumnCvPdfDocument({ draft, styleSet }: { draft: CvDraft; styleSe
 
 function Section({
   children,
+  minPresenceAhead,
   styles,
   title,
   visible,
 }: {
   children: ReactNode;
+  minPresenceAhead?: number;
   styles: CvPdfStyleSet["styles"];
   title: string;
   visible: boolean;
@@ -212,7 +231,9 @@ function Section({
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text minPresenceAhead={minPresenceAhead} style={styles.sectionTitle}>
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -437,7 +458,7 @@ type ThreeColumnPage = {
   rightBlocks: ThreeColumnRightBlock[];
 };
 
-function paginateThreeColumnDraft(draft: CvDraft, densityId: CvDensityProfileId): ThreeColumnPage[] {
+export function paginateThreeColumnDraft(draft: CvDraft, densityId: CvDensityProfileId): ThreeColumnPage[] {
   const experiencePages = paginateExperienceItems(draft.experience, densityId);
   const rightPages = paginateRightBlocks(createRightBlocks(draft), densityId);
   const pageCount = Math.max(1, experiencePages.length, rightPages.length);
@@ -446,6 +467,14 @@ function paginateThreeColumnDraft(draft: CvDraft, densityId: CvDensityProfileId)
     experience: experiencePages[index] ?? [],
     rightBlocks: rightPages[index] ?? [],
   }));
+}
+
+export function getExperienceColumnTitle(page: ThreeColumnPage, pageIndex: number) {
+  if (page.experience.length === 0) {
+    return null;
+  }
+
+  return pageIndex === 0 ? "Experience" : "Experience continued";
 }
 
 function paginateExperienceItems(items: CvDraft["experience"], densityId: CvDensityProfileId) {
@@ -577,17 +606,24 @@ function paginateRightBlocks(blocks: ThreeColumnRightBlock[], densityId: CvDensi
   let usedLines = 0;
 
   for (const block of blocks) {
-    const sectionTitleLines = currentPage.at(-1)?.section === block.section ? 0 : 3;
+    const startsNewSection = currentPage.at(-1)?.section !== block.section;
+    const sectionTitleLines = startsNewSection ? rightSectionTitleLines : 0;
+    const sectionStartLines = startsNewSection ? estimateRightSectionStartLines(block) : 0;
     const blockLines = estimateRightBlockLines(block) + sectionTitleLines;
+
+    if (currentPage.length > 0 && sectionStartLines > 0 && usedLines + sectionStartLines > capacity) {
+      pages.push(currentPage);
+      currentPage = [];
+      usedLines = 0;
+    }
 
     if (currentPage.length > 0 && usedLines + blockLines > capacity) {
       pages.push(currentPage);
       currentPage = [];
-      usedLines = estimateRightBlockLines(block) + 3;
-    } else {
-      usedLines += blockLines;
+      usedLines = 0;
     }
 
+    usedLines += estimateRightBlockLines(block) + (currentPage.at(-1)?.section === block.section ? 0 : rightSectionTitleLines);
     currentPage.push(block);
   }
 
@@ -752,6 +788,10 @@ function estimateRightBlockLines(block: ThreeColumnRightBlock) {
   return estimateTextLines(block.text, 28) + 1;
 }
 
+function estimateRightSectionStartLines(block: ThreeColumnRightBlock) {
+  return rightSectionTitleLines + Math.min(estimateRightBlockLines(block), rightFirstBlockMinimumLines[block.type]);
+}
+
 function estimateTextLines(value: string, charactersPerLine: number) {
   if (!value) {
     return 0;
@@ -771,6 +811,21 @@ const rightColumnLineCapacity: Record<CvDensityProfileId, number> = {
   balanced: 68,
   dense: 76,
 };
+
+const rightSectionTitleLines = 3;
+
+const rightFirstBlockMinimumLines: Record<ThreeColumnRightBlock["type"], number> = {
+  education: 5,
+  project: 5,
+  text: 4,
+  "list-item": 3,
+};
+
+const classicSectionMinPresenceAhead = {
+  education: 56,
+  experience: 72,
+  projects: 64,
+} as const;
 
 const bulletWordChunkSize: Record<CvDensityProfileId, number> = {
   relaxed: 34,
