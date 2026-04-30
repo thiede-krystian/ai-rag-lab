@@ -31,7 +31,7 @@ describe("CV PDF export API", () => {
     expect(response.headers.get("content-type")).toBe("application/pdf");
     expect(response.headers.get("content-disposition")).toContain("krystian-thiede-classic-a4.pdf");
     expect(payload).toBe("%PDF-1.4");
-    expect(mocks.renderCvPdf).toHaveBeenCalledWith(expect.any(Object), "classic-a4");
+    expect(mocks.renderCvPdf).toHaveBeenCalledWith(expect.any(Object), "classic-a4", "inter");
   });
 
   it("supports the 3-column template", async () => {
@@ -47,7 +47,23 @@ describe("CV PDF export API", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toContain("krystian-thiede-three-column-a4.pdf");
-    expect(mocks.renderCvPdf).toHaveBeenCalledWith(expect.any(Object), "three-column-a4");
+    expect(mocks.renderCvPdf).toHaveBeenCalledWith(expect.any(Object), "three-column-a4", "inter");
+  });
+
+  it("passes the selected embedded PDF font to the renderer", async () => {
+    const response = await POST(
+      createJsonRequest({
+        fontFamily: "source-serif-4",
+        template: "three-column-a4",
+        draft: {
+          personal: { name: "Krystian Thiede", headline: "AI Engineer" },
+          summary: "Builds AI products.",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.renderCvPdf).toHaveBeenCalledWith(expect.any(Object), "three-column-a4", "source-serif-4");
   });
 
   it("rejects removed 3-column template ids", async () => {

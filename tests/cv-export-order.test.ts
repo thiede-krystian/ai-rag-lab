@@ -23,15 +23,30 @@ describe("CV export ordering", () => {
 
     draft.experience = [
       { role: "Old", company: "A", location: "", period: "2013 - 2015", bullets: [] },
+      {
+        role: "Hidden newest",
+        company: "X",
+        location: "",
+        period: "2025 - now",
+        bullets: [],
+        includeInExport: false,
+      },
       { role: "Current", company: "B", location: "", period: "APR. 2023 - now", bullets: [] },
       { role: "Middle", company: "C", location: "", period: "SEPT. 2019 - APR. 2023", bullets: [] },
     ];
     draft.projects = [
       { name: "Basewear", description: "Basewear.pl | 2015 - 2017 E-commerce platform.", technologies: [] },
       { name: "Tri-City Job Fair", description: "targipracy.gdansk.pl | 2015 - 2019 Website.", technologies: [] },
+      {
+        name: "Hidden project",
+        description: "hidden.example | 2024 - now",
+        technologies: [],
+        includeInExport: false,
+      },
       { name: "No dates", description: "Internal tool without dates.", technologies: [] },
     ];
     draft.education = [
+      { school: "Hidden School", degree: "", period: "2020 - 2022", details: "", includeInExport: false },
       { school: "Older School", degree: "", period: "2001 - 2004", details: "" },
       { school: "Newer School", degree: "", period: "2004 - 2008", details: "" },
     ];

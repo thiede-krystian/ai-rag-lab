@@ -488,13 +488,12 @@ function DemoFlowPanel({
 }) {
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [collapsedPreference, setCollapsedPreference] = useState<boolean | null>(() =>
-    readStoredDemoFlowCollapsedPreference(),
-  );
+  const [collapsedPreference, setCollapsedPreference] = useState<boolean | null>(null);
+  const isMounted = useMounted();
   const shouldStartCollapsed = useMediaQuery("(max-width: 767px)", false, {
     getInitialValueInEffect: true,
   });
-  const isCollapsed = collapsedPreference ?? shouldStartCollapsed;
+  const isCollapsed = isMounted ? (collapsedPreference ?? shouldStartCollapsed) : false;
   const documentCount = documents.length;
   const hasDocuments = documentCount > 0;
   const hasCv = documents.some((document) => document.sourceType === "cv");
@@ -568,6 +567,16 @@ function DemoFlowPanel({
       setIsLoading(false);
     }
   }, [refreshDocuments]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setCollapsedPreference(readStoredDemoFlowCollapsedPreference());
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;

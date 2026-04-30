@@ -6,6 +6,7 @@ const draft: CvDraft = {
   personal: {
     name: "Krystian Thiede",
     headline: "Full Stack Developer",
+    secondHeadline: "",
     email: "krystian@example.com",
     phone: "",
     location: "Gdansk",

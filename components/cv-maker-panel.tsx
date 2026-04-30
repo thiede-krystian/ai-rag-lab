@@ -45,11 +45,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { readApiResponse } from "@/lib/api-response";
 import { createEmptyCvDraft, hasCvContent, normalizeCvDraft } from "@/lib/cv/draft";
 import { cvDraftToMarkdown } from "@/lib/cv/markdown";
+import { DEFAULT_CV_PDF_FONT, cvPdfFontOptions, normalizeCvPdfFontId } from "@/lib/cv/pdf-fonts";
 import { DEFAULT_CV_TEMPLATE, cvTemplateOptions, normalizeCvTemplateId } from "@/lib/cv/templates";
 import {
   CV_MAKER_STORAGE_KEY,
   LINKEDIN_PROFILE_STORAGE_KEY,
   type CvDraft,
+  type CvPdfFontId,
   type CvTemplateId,
   type LinkedInDifference,
   type LinkedInDifferenceType,
@@ -102,6 +104,7 @@ type LinkedInApplyResponse = {
 
 type CvMakerStorage = {
   draft: CvDraft;
+  fontFamily: CvPdfFontId;
   sourceText: string;
   sourceFilename: string;
   sourceExtractionMode: string;
@@ -123,6 +126,7 @@ const differenceFilterOptions: { value: DifferenceFilter; label: string }[] = [
   { value: "conflict", label: "Conflicts" },
   { value: "richer-on-linkedin", label: "Richer on LinkedIn" },
 ];
+const pdfExportTimeoutMs = 45_000;
 
 export function CvMakerPanel() {
   const [draft, setDraft] = useState<CvDraft>(() => createEmptyCvDraft());
@@ -130,6 +134,7 @@ export function CvMakerPanel() {
   const [sourceFilename, setSourceFilename] = useState("");
   const [sourceExtractionMode, setSourceExtractionMode] = useState("");
   const [template, setTemplate] = useState<CvTemplateId>(DEFAULT_CV_TEMPLATE);
+  const [fontFamily, setFontFamily] = useState<CvPdfFontId>(DEFAULT_CV_PDF_FONT);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -161,6 +166,7 @@ export function CvMakerPanel() {
         setSourceFilename(saved.sourceFilename);
         setSourceExtractionMode(saved.sourceExtractionMode);
         setTemplate(saved.template);
+        setFontFamily(saved.fontFamily);
       }
 
       if (linkedInSaved?.profile) {
@@ -185,13 +191,14 @@ export function CvMakerPanel() {
       CV_MAKER_STORAGE_KEY,
       JSON.stringify({
         draft,
+        fontFamily,
         sourceText,
         sourceFilename,
         sourceExtractionMode,
         template,
       } satisfies CvMakerStorage),
     );
-  }, [draft, isHydrated, sourceExtractionMode, sourceFilename, sourceText, template]);
+  }, [draft, fontFamily, isHydrated, sourceExtractionMode, sourceFilename, sourceText, template]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -312,6 +319,10 @@ export function CvMakerPanel() {
 
   async function handleDownloadPdf() {
     setIsExportingPdf(true);
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      abortController.abort();
+    }, pdfExportTimeoutMs);
 
     try {
       const response = await fetch("/api/cv/export/pdf", {
@@ -319,8 +330,10 @@ export function CvMakerPanel() {
         headers: {
           "Content-Type": "application/json",
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           draft,
+          fontFamily,
           template,
         }),
       });
@@ -335,10 +348,13 @@ export function CvMakerPanel() {
     } catch (error) {
       notifications.show({
         title: "PDF export failed",
-        message: getErrorMessage(error),
+        message: isAbortError(error)
+          ? `PDF export timed out after ${Math.round(pdfExportTimeoutMs / 1000)} seconds. Try a shorter draft or another template.`
+          : getErrorMessage(error),
         color: "red",
       });
     } finally {
+      window.clearTimeout(timeoutId);
       setIsExportingPdf(false);
     }
   }
@@ -676,6 +692,11 @@ export function CvMakerPanel() {
                         value={draft.personal.headline}
                       />
                       <TextInput
+                        label="2nd headline"
+                        onChange={(event) => updatePersonal("secondHeadline", event.currentTarget.value)}
+                        value={draft.personal.secondHeadline}
+                      />
+                      <TextInput
                         label="Email"
                         onChange={(event) => updatePersonal("email", event.currentTarget.value)}
                         value={draft.personal.email}
@@ -717,9 +738,11 @@ export function CvMakerPanel() {
                     <Textarea
                       autosize
                       minRows={4}
-                      onChange={(event) =>
-                        setDraft((current) => ({ ...current, summary: event.currentTarget.value }))
-                      }
+                      onChange={(event) => {
+                        const summary = event.currentTarget.value;
+
+                        setDraft((current) => ({ ...current, summary }));
+                      }}
                       value={draft.summary}
                     />
                   </Fieldset>
@@ -728,9 +751,11 @@ export function CvMakerPanel() {
                     <Textarea
                       autosize
                       minRows={3}
-                      onChange={(event) =>
-                        setDraft((current) => ({ ...current, aspirations: event.currentTarget.value }))
-                      }
+                      onChange={(event) => {
+                        const aspirations = event.currentTarget.value;
+
+                        setDraft((current) => ({ ...current, aspirations }));
+                      }}
                       value={draft.aspirations}
                     />
                   </Fieldset>
@@ -839,6 +864,14 @@ export function CvMakerPanel() {
             onChange={(value) => setTemplate(normalizeCvTemplateId(value))}
             value={template}
           />
+          <Select
+            allowDeselect={false}
+            data={cvPdfFontOptions}
+            description="Embedded in the PDF for consistent rendering across Chrome and Adobe Acrobat."
+            label="PDF font"
+            onChange={(value) => setFontFamily(normalizeCvPdfFontId(value))}
+            value={fontFamily}
+          />
           <Group>
             <Button
               disabled={!hasStructuredDraft}
@@ -918,6 +951,20 @@ function EditableExperienceSection({
       <Stack gap="sm">
         {draft.experience.map((item, index) => (
           <Stack key={`experience-${index}`} gap="sm">
+            <Group justify="space-between">
+              <Checkbox
+                checked={isIncludedInCvExport(item)}
+                label="Export"
+                onChange={(event) =>
+                  updateExperience(index, {
+                    includeInExport: event.currentTarget.checked,
+                  })
+                }
+              />
+              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeExperience(index)} variant="subtle">
+                Remove experience
+              </Button>
+            </Group>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
               <TextInput
                 label="Role"
@@ -951,11 +998,6 @@ function EditableExperienceSection({
               }
               value={arrayToLines(item.bullets)}
             />
-            <Group justify="flex-end">
-              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeExperience(index)} variant="subtle">
-                Remove experience
-              </Button>
-            </Group>
             {index < draft.experience.length - 1 ? <Divider /> : null}
           </Stack>
         ))}
@@ -986,6 +1028,7 @@ function EditableExperienceSection({
           location: "",
           period: "",
           bullets: [],
+          includeInExport: true,
         },
       ],
     }));
@@ -1412,6 +1455,20 @@ function EditableProjectsSection({
       <Stack gap="sm">
         {draft.projects.map((project, index) => (
           <Stack key={`project-${index}`} gap="sm">
+            <Group justify="space-between">
+              <Checkbox
+                checked={isIncludedInCvExport(project)}
+                label="Export"
+                onChange={(event) =>
+                  updateProject(index, {
+                    includeInExport: event.currentTarget.checked,
+                  })
+                }
+              />
+              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeProject(index)} variant="subtle">
+                Remove project
+              </Button>
+            </Group>
             <TextInput
               label="Name"
               onChange={(event) => updateProject(index, { name: event.currentTarget.value })}
@@ -1429,11 +1486,6 @@ function EditableProjectsSection({
               onChange={(technologies) => updateProject(index, { technologies })}
               value={project.technologies}
             />
-            <Group justify="flex-end">
-              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeProject(index)} variant="subtle">
-                Remove project
-              </Button>
-            </Group>
             {index < draft.projects.length - 1 ? <Divider /> : null}
           </Stack>
         ))}
@@ -1456,7 +1508,15 @@ function EditableProjectsSection({
   function addProject() {
     setDraft((current) => ({
       ...current,
-      projects: [...current.projects, { name: "", description: "", technologies: [] }],
+      projects: [
+        ...current.projects,
+        {
+          name: "",
+          description: "",
+          technologies: [],
+          includeInExport: true,
+        },
+      ],
     }));
   }
 
@@ -1480,6 +1540,20 @@ function EditableEducationSection({
       <Stack gap="sm">
         {draft.education.map((item, index) => (
           <Stack key={`education-${index}`} gap="sm">
+            <Group justify="space-between">
+              <Checkbox
+                checked={isIncludedInCvExport(item)}
+                label="Export"
+                onChange={(event) =>
+                  updateEducation(index, {
+                    includeInExport: event.currentTarget.checked,
+                  })
+                }
+              />
+              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeEducation(index)} variant="subtle">
+                Remove education
+              </Button>
+            </Group>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
               <TextInput
                 label="School"
@@ -1502,11 +1576,6 @@ function EditableEducationSection({
                 value={item.details}
               />
             </SimpleGrid>
-            <Group justify="flex-end">
-              <Button color="red" leftSection={<Trash2 size={16} />} onClick={() => removeEducation(index)} variant="subtle">
-                Remove education
-              </Button>
-            </Group>
             {index < draft.education.length - 1 ? <Divider /> : null}
           </Stack>
         ))}
@@ -1529,7 +1598,16 @@ function EditableEducationSection({
   function addEducation() {
     setDraft((current) => ({
       ...current,
-      education: [...current.education, { school: "", degree: "", period: "", details: "" }],
+      education: [
+        ...current.education,
+        {
+          school: "",
+          degree: "",
+          period: "",
+          details: "",
+          includeInExport: true,
+        },
+      ],
     }));
   }
 
@@ -1539,6 +1617,10 @@ function EditableEducationSection({
       education: current.education.filter((_, itemIndex) => itemIndex !== index),
     }));
   }
+}
+
+function isIncludedInCvExport(item: { includeInExport?: boolean }) {
+  return item.includeInExport !== false;
 }
 
 function readStoredDraft(): CvMakerStorage | null {
@@ -1553,6 +1635,7 @@ function readStoredDraft(): CvMakerStorage | null {
 
     return {
       draft: normalizeCvDraft(parsed.draft),
+      fontFamily: normalizeCvPdfFontId(parsed.fontFamily),
       sourceText: typeof parsed.sourceText === "string" ? parsed.sourceText : "",
       sourceFilename: typeof parsed.sourceFilename === "string" ? parsed.sourceFilename : "",
       sourceExtractionMode:
@@ -1594,8 +1677,14 @@ function downloadBlob(content: BlobPart | Blob, type: string, filename: string) 
 
   link.href = url;
   link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+    link.remove();
+  }, 0);
 }
 
 function getDownloadFilename(draft: CvDraft, extension: "md" | "pdf", template?: CvTemplateId) {
@@ -1633,6 +1722,10 @@ function linesToArray(value: string) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function getLinkedInProfileSummary(profile: LinkedInProfile) {

@@ -7,6 +7,7 @@ export function cvDraftToMarkdown(draft: CvDraft) {
 
   pushHeading(lines, orderedDraft.personal.name || "CV", 1);
   pushText(lines, orderedDraft.personal.headline);
+  pushText(lines, orderedDraft.personal.secondHeadline);
   pushContact(lines, orderedDraft);
   pushSection(lines, "Summary", orderedDraft.summary);
   pushSection(lines, "Aspirations", orderedDraft.aspirations);

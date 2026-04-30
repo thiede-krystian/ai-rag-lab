@@ -78,6 +78,7 @@ function createDraft(): CvDraft {
     personal: {
       name: "Krystian Thiede",
       headline: "Developer",
+      secondHeadline: "",
       email: "",
       phone: "",
       location: "",

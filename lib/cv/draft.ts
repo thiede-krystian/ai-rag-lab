@@ -11,6 +11,7 @@ export function createEmptyCvDraft(): CvDraft {
     personal: {
       name: "",
       headline: "",
+      secondHeadline: "",
       email: "",
       phone: "",
       location: "",
@@ -36,6 +37,7 @@ export function normalizeCvDraft(input: unknown): CvDraft {
     personal: {
       name: asString(personal.name),
       headline: asString(personal.headline),
+      secondHeadline: asString(personal.secondHeadline),
       email: asString(personal.email),
       phone: asString(personal.phone),
       location: asString(personal.location),
@@ -63,6 +65,7 @@ export function hasCvContent(draft: CvDraft) {
   return Boolean(
     draft.personal.name ||
       draft.personal.headline ||
+      draft.personal.secondHeadline ||
       draft.summary ||
       draft.aspirations ||
       draft.skills.length ||
@@ -97,6 +100,7 @@ function normalizeExperience(input: unknown): CvExperienceItem {
     location: asString(source.location),
     period: asString(source.period),
     bullets: cleanTextArray(source.bullets),
+    includeInExport: normalizeIncludeInExport(source.includeInExport),
   };
 }
 
@@ -107,6 +111,7 @@ function normalizeProject(input: unknown): CvProjectItem {
     name: asString(source.name),
     description: asString(source.description),
     technologies: cleanStringArray(source.technologies),
+    includeInExport: normalizeIncludeInExport(source.includeInExport),
   };
 }
 
@@ -118,7 +123,12 @@ function normalizeEducation(input: unknown): CvEducationItem {
     degree: asString(source.degree),
     period: asString(source.period),
     details: asString(source.details),
+    includeInExport: normalizeIncludeInExport(source.includeInExport),
   };
+}
+
+function normalizeIncludeInExport(value: unknown) {
+  return typeof value === "boolean" ? value : true;
 }
 
 function cleanStringArray(input: unknown) {

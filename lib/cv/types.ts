@@ -6,6 +6,7 @@ export type CvLink = {
 export type CvPersonalInfo = {
   name: string;
   headline: string;
+  secondHeadline: string;
   email: string;
   phone: string;
   location: string;
@@ -19,12 +20,14 @@ export type CvExperienceItem = {
   location: string;
   period: string;
   bullets: string[];
+  includeInExport?: boolean;
 };
 
 export type CvProjectItem = {
   name: string;
   description: string;
   technologies: string[];
+  includeInExport?: boolean;
 };
 
 export type CvEducationItem = {
@@ -32,6 +35,7 @@ export type CvEducationItem = {
   degree: string;
   period: string;
   details: string;
+  includeInExport?: boolean;
 };
 
 export type CvDraft = {
@@ -47,6 +51,8 @@ export type CvDraft = {
 };
 
 export type CvTemplateId = "classic-a4" | "three-column-a4";
+
+export type CvPdfFontId = "inter" | "source-serif-4";
 
 export const CV_MAKER_STORAGE_KEY = "ai-rag-lab-cv-maker-draft-v1";
 

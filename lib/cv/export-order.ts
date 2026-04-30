@@ -16,9 +16,9 @@ const datePattern = new RegExp(
 export function orderCvDraftForExport(draft: CvDraft): CvDraft {
   return {
     ...draft,
-    education: sortByNewestPeriod(draft.education, getEducationPeriodText),
-    experience: sortByNewestPeriod(draft.experience, getExperiencePeriodText),
-    projects: sortByNewestPeriod(draft.projects, getProjectPeriodText),
+    education: sortByNewestPeriod(draft.education.filter(isIncludedInExport), getEducationPeriodText),
+    experience: sortByNewestPeriod(draft.experience.filter(isIncludedInExport), getExperiencePeriodText),
+    projects: sortByNewestPeriod(draft.projects.filter(isIncludedInExport), getProjectPeriodText),
   };
 }
 
@@ -81,6 +81,10 @@ function sortByNewestPeriod<T>(items: T[], getPeriodText: (item: T) => string) {
       );
     })
     .map(({ item }) => item);
+}
+
+function isIncludedInExport(item: { includeInExport?: boolean }) {
+  return item.includeInExport !== false;
 }
 
 function getExperiencePeriodText(item: CvExperienceItem) {
