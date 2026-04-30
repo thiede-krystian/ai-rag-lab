@@ -149,7 +149,7 @@ function cleanTextArray(input: unknown) {
 
 function splitLooseList(value: string) {
   return value
-    .split(/\n|,|;|\s\|\s/)
+    .split(/\n|,|;|\s\|\s|\s+[·•]\s+/)
     .map((item) => item.replace(/^[-*•]\s*/, ""));
 }
 

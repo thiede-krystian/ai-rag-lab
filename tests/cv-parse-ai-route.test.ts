@@ -14,8 +14,13 @@ describe("CV AI parse API", () => {
     vi.clearAllMocks();
     mocks.createChatCompletion.mockResolvedValue({
       content: JSON.stringify({
-        personal: { name: "Krystian Thiede", headline: "AI Engineer" },
+        personal: {
+          name: "Krystian Thiede",
+          headline: "AI Engineer",
+          secondHeadline: "RAG and vector search",
+        },
         skills: ["RAG", "TypeScript"],
+        experience: [{ role: "AI Engineer", company: "Product Lab", period: "2024 - now", bullets: [] }],
       }),
       model: "openrouter/test",
     });
@@ -27,12 +32,39 @@ describe("CV AI parse API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.model).toBe("openrouter/test");
+    expect(payload.parser).toBe("openrouter-cv-classifier-v2");
+    expect(payload.quality).toMatchObject({
+      detectedSecondHeadline: true,
+      experienceCount: 1,
+    });
     expect(payload.draft.personal.name).toBe("Krystian Thiede");
+    expect(payload.draft.personal.secondHeadline).toBe("RAG and vector search");
     expect(payload.draft.skills).toContain("TypeScript");
   });
 
-  it("rejects malformed model JSON", async () => {
+  it("repairs malformed model JSON once", async () => {
     mocks.createChatCompletion.mockResolvedValueOnce({
+      content: "not json",
+      model: "openrouter/test",
+    });
+    mocks.createChatCompletion.mockResolvedValueOnce({
+      content: JSON.stringify({
+        personal: { name: "Krystian Thiede", headline: "AI Engineer" },
+        skills: ["RAG"],
+      }),
+      model: "openrouter/test",
+    });
+
+    const response = await POST(createJsonRequest({ text: "Krystian Thiede AI Engineer with RAG and TypeScript" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.warnings).toContain("Initial AI response was invalid JSON and was repaired.");
+    expect(mocks.createChatCompletion).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed model JSON when repair fails", async () => {
+    mocks.createChatCompletion.mockResolvedValue({
       content: "not json",
       model: "openrouter/test",
     });
@@ -42,6 +74,18 @@ describe("CV AI parse API", () => {
 
     expect(response.status).toBe(502);
     expect(payload.error).toBe("AI parser returned invalid CV JSON.");
+  });
+
+  it("uses the strict CV classifier prompt", async () => {
+    await POST(createJsonRequest({ text: "Krystian Thiede AI Engineer with RAG and TypeScript" }));
+
+    const messages = mocks.createChatCompletion.mock.calls[0]?.[0];
+    const systemPrompt = messages?.[0]?.content ?? "";
+
+    expect(systemPrompt).toContain("openrouter-cv-classifier-v2");
+    expect(systemPrompt).toContain("secondHeadline");
+    expect(systemPrompt).toContain("Preserve every role, employer, project, and education entry");
+    expect(systemPrompt).toContain("Put spoken or natural languages");
   });
 });
 

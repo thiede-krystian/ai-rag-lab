@@ -25,6 +25,21 @@ describe("PDF text extraction", () => {
     expect(result.characters).toBe(0);
   });
 
+  it("extracts text from every page in a searchable PDF", async () => {
+    const pdf = createSearchablePdfPages([
+      "Page one experience: Senior Software Engineer.",
+      "Page two experience: Full Stack Developer.",
+      "Page three education: Master of Engineering.",
+    ]);
+
+    const result = await extractPdfText(pdf);
+
+    expect(result.pageCount).toBe(3);
+    expect(result.text).toContain("Page one experience");
+    expect(result.text).toContain("Page two experience");
+    expect(result.text).toContain("Page three education");
+  });
+
   it("orders positioned text by columns and vertical layout", () => {
     const text = extractLayoutAwareTextFromItems(
       [
@@ -56,38 +71,55 @@ describe("PDF text extraction", () => {
 });
 
 function createSearchablePdf(text: string): Uint8Array {
+  return createSearchablePdfPages([text]);
+}
+
+function createSearchablePdfPages(texts: string[]): Uint8Array {
   const chunks = ["%PDF-1.4\n"];
   const offsets: number[] = [0];
-  const escapedText = escapePdfText(text);
-  const contentStream = escapedText
-    ? `BT\n/F1 24 Tf\n72 720 Td\n(${escapedText}) Tj\nET`
-    : "";
+  const pageIds = texts.map((_, index) => 4 + index * 2);
 
   addObject(chunks, offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>");
-  addObject(chunks, offsets, 2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
   addObject(
     chunks,
     offsets,
-    3,
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    2,
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${texts.length} >>`,
   );
-  addObject(chunks, offsets, 4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  addObject(
-    chunks,
-    offsets,
-    5,
-    `<< /Length ${Buffer.byteLength(contentStream, "utf8")} >>\nstream\n${contentStream}\nendstream`,
-  );
+  addObject(chunks, offsets, 3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+  texts.forEach((text, index) => {
+    const pageId = pageIds[index];
+    const contentId = pageId + 1;
+    const escapedText = escapePdfText(text);
+    const contentStream = escapedText
+      ? `BT\n/F1 24 Tf\n72 720 Td\n(${escapedText}) Tj\nET`
+      : "";
+
+    addObject(
+      chunks,
+      offsets,
+      pageId,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`,
+    );
+    addObject(
+      chunks,
+      offsets,
+      contentId,
+      `<< /Length ${Buffer.byteLength(contentStream, "utf8")} >>\nstream\n${contentStream}\nendstream`,
+    );
+  });
 
   const xrefOffset = Buffer.byteLength(chunks.join(""), "utf8");
-  chunks.push("xref\n0 6\n");
+  const size = Math.max(...offsets.map((offset, index) => (offset || index === 0 ? index : 0))) + 1;
+  chunks.push(`xref\n0 ${size}\n`);
   chunks.push("0000000000 65535 f \n");
 
-  for (let id = 1; id <= 5; id += 1) {
+  for (let id = 1; id < size; id += 1) {
     chunks.push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
   }
 
-  chunks.push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  chunks.push(`trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
 
   return new Uint8Array(Buffer.from(chunks.join(""), "utf8"));
 }

@@ -33,4 +33,16 @@ describe("CV draft normalization", () => {
     expect(draft.projects.map((item) => item.includeInExport)).toEqual([true, false]);
     expect(draft.education.map((item) => item.includeInExport)).toEqual([true, false]);
   });
+
+  it("normalizes middot-separated list values into separate items", () => {
+    const draft = normalizeCvDraft({
+      skills: ["JavaScript · TypeScript · NodeJS", "ReactJS"],
+      languages: ["Polish · English"],
+      projects: [{ name: "AI Lab", technologies: ["Next.js · Qdrant · OpenRouter"] }],
+    });
+
+    expect(draft.skills).toEqual(["JavaScript", "TypeScript", "NodeJS", "ReactJS"]);
+    expect(draft.languages).toEqual(["Polish", "English"]);
+    expect(draft.projects[0]?.technologies).toEqual(["Next.js", "Qdrant", "OpenRouter"]);
+  });
 });

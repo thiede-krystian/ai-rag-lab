@@ -73,6 +73,14 @@ type CvImportPdfResponse = {
 type CvAiParseResponse = {
   draft: CvDraft;
   model: string;
+  parser: "openrouter-cv-classifier-v2";
+  quality: {
+    experienceCount: number;
+    projectCount: number;
+    educationCount: number;
+    detectedSecondHeadline: boolean;
+  };
+  warnings: string[];
   error?: string;
 };
 
@@ -141,6 +149,7 @@ export function CvMakerPanel() {
   const [isParsingAi, setIsParsingAi] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isAiConfirmOpen, setIsAiConfirmOpen] = useState(false);
+  const [aiDraftPreview, setAiDraftPreview] = useState<CvAiParseResponse | null>(null);
   const [linkedInFile, setLinkedInFile] = useState<File | null>(null);
   const [linkedInText, setLinkedInText] = useState("");
   const [linkedInProfile, setLinkedInProfile] = useState<LinkedInProfile | null>(null);
@@ -262,11 +271,11 @@ export function CvMakerPanel() {
     }
   }
 
-  async function handleImproveWithAi() {
+  async function handleClassifyWithAi() {
     if (!sourceText.trim()) {
       notifications.show({
         title: "AI parse unavailable",
-        message: "Import a searchable CV PDF before using AI parsing.",
+        message: "Import a searchable CV PDF before using AI classification.",
         color: "red",
       });
       return;
@@ -288,25 +297,48 @@ export function CvMakerPanel() {
       const payload = await readApiResponse<CvAiParseResponse>(response);
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Could not improve CV draft with AI.");
+        throw new Error(payload.error ?? "Could not classify CV draft with AI.");
       }
 
-      setDraft(normalizeCvDraft(payload.draft));
-      setIsAiConfirmOpen(false);
+      setAiDraftPreview(payload);
       notifications.show({
-        title: "CV draft improved",
-        message: `Parsed with ${payload.model}`,
+        title: "AI draft ready",
+        message: `Classified with ${payload.model}`,
         color: "green",
       });
     } catch (error) {
       notifications.show({
-        title: "AI parse failed",
+        title: "AI classification failed",
         message: getErrorMessage(error),
         color: "red",
       });
     } finally {
       setIsParsingAi(false);
     }
+  }
+
+  function handleOpenAiClassifier() {
+    setAiDraftPreview(null);
+    setIsAiConfirmOpen(true);
+  }
+
+  function handleCloseAiClassifier() {
+    setAiDraftPreview(null);
+    setIsAiConfirmOpen(false);
+  }
+
+  function handleApplyAiDraft() {
+    if (!aiDraftPreview) {
+      return;
+    }
+
+    setDraft(normalizeCvDraft(aiDraftPreview.draft));
+    handleCloseAiClassifier();
+    notifications.show({
+      title: "AI draft applied",
+      message: "The structured CV draft was updated from the OpenRouter classification.",
+      color: "green",
+    });
   }
 
   function handleDownloadMarkdown() {
@@ -565,6 +597,8 @@ export function CvMakerPanel() {
     setSourceFilename("");
     setSourceExtractionMode("");
     setImportFile(null);
+    setAiDraftPreview(null);
+    setIsAiConfirmOpen(false);
     setLinkedInProfile(null);
     setLinkedInSource("");
     setLinkedInParsedFiles([]);
@@ -634,10 +668,19 @@ export function CvMakerPanel() {
             <Button color="red" leftSection={<Trash2 size={16} />} onClick={handleClearDraft} variant="light">
               Clear draft
             </Button>
+            <Button
+              data-tour="cv-ai"
+              disabled={!sourceText.trim()}
+              leftSection={<Sparkles size={16} />}
+              onClick={handleOpenAiClassifier}
+              variant="light"
+            >
+              Classify with AI
+            </Button>
           </Group>
           <Alert color="blue" variant="light">
-            The first pass uses local layout-aware heuristics. Use AI parsing only if you want to send the
-            extracted CV text to OpenRouter for better structure.
+            The first pass uses local layout-aware heuristics. Use AI classification only if you want
+            to send the full extracted CV text to OpenRouter and map it into the export draft schema.
           </Alert>
           <Accordion variant="contained">
             <Accordion.Item value="source-text">
@@ -889,15 +932,6 @@ export function CvMakerPanel() {
             >
               Download PDF
             </Button>
-            <Button
-              data-tour="cv-ai"
-              disabled={!sourceText.trim()}
-              leftSection={<Sparkles size={16} />}
-              onClick={() => setIsAiConfirmOpen(true)}
-              variant="light"
-            >
-              Improve with AI
-            </Button>
           </Group>
           <Alert color="yellow" variant="light">
             PDF export uses an A4 template with automatic wrapping. It may flow to a second page for longer CVs.
@@ -908,20 +942,34 @@ export function CvMakerPanel() {
       <Modal
         centered
         opened={isAiConfirmOpen}
-        onClose={() => setIsAiConfirmOpen(false)}
-        title="Improve CV with AI"
+        onClose={handleCloseAiClassifier}
+        title="Classify CV with AI"
       >
         <Stack gap="md">
           <Alert color="yellow" variant="light">
-            This sends the extracted CV text to OpenRouter to produce a cleaner structured draft.
+            This sends the full extracted CV text to OpenRouter. The model returns a structured
+            draft for the export form; it does not edit the original PDF and should not invent facts.
           </Alert>
+          {aiDraftPreview ? (
+            <AiClassificationPreview currentDraft={draft} preview={aiDraftPreview} />
+          ) : null}
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setIsAiConfirmOpen(false)}>
+            <Button variant="default" onClick={handleCloseAiClassifier}>
               Cancel
             </Button>
-            <Button leftSection={<Sparkles size={16} />} loading={isParsingAi} onClick={handleImproveWithAi}>
-              Send to OpenRouter
-            </Button>
+            {aiDraftPreview ? (
+              <Button leftSection={<CheckCircle2 size={16} />} onClick={handleApplyAiDraft}>
+                Apply AI draft
+              </Button>
+            ) : (
+              <Button
+                leftSection={<Sparkles size={16} />}
+                loading={isParsingAi}
+                onClick={handleClassifyWithAi}
+              >
+                Send to OpenRouter
+              </Button>
+            )}
           </Group>
         </Stack>
       </Modal>
@@ -1414,6 +1462,84 @@ function StepNumberBadge({ value }: { value: number }) {
         {value}
       </Text>
     </ThemeIcon>
+  );
+}
+
+function AiClassificationPreview({
+  currentDraft,
+  preview,
+}: {
+  currentDraft: CvDraft;
+  preview: CvAiParseResponse;
+}) {
+  return (
+    <Stack gap="sm">
+      <Group gap="xs">
+        <Badge variant="light">{preview.parser}</Badge>
+        <Badge variant="light">{preview.model}</Badge>
+      </Group>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+        <AiQualityMetric
+          label="Experience"
+          before={currentDraft.experience.length}
+          after={preview.quality.experienceCount}
+        />
+        <AiQualityMetric
+          label="Projects"
+          before={currentDraft.projects.length}
+          after={preview.quality.projectCount}
+        />
+        <AiQualityMetric
+          label="Education"
+          before={currentDraft.education.length}
+          after={preview.quality.educationCount}
+        />
+        <Paper withBorder radius="md" p="sm">
+          <Text size="xs" c="dimmed">
+            2nd headline
+          </Text>
+          <Text size="sm" fw={700}>
+            {preview.quality.detectedSecondHeadline ? "Detected" : "Not detected"}
+          </Text>
+        </Paper>
+      </SimpleGrid>
+      {preview.warnings.length > 0 ? (
+        <Alert color="yellow" variant="light">
+          <Stack gap={4}>
+            {preview.warnings.map((warning, index) => (
+              <Text key={`${warning}-${index}`} size="sm">
+                {warning}
+              </Text>
+            ))}
+          </Stack>
+        </Alert>
+      ) : null}
+      <Text size="xs" c="dimmed">
+        Review the counts before applying. Applying replaces the current structured draft in the
+        editor, but you can still manually adjust every field afterwards.
+      </Text>
+    </Stack>
+  );
+}
+
+function AiQualityMetric({
+  after,
+  before,
+  label,
+}: {
+  after: number;
+  before: number;
+  label: string;
+}) {
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Text size="sm" fw={700}>
+        {before} -&gt; {after}
+      </Text>
+    </Paper>
   );
 }
 

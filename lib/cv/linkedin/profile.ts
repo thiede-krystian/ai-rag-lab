@@ -151,7 +151,7 @@ export function normalizeKey(value: string) {
 
 function splitLooseList(value: string) {
   return value
-    .split(/[,;|]\s*|\n+/)
+    .split(/[,;|]\s*|\s+[·•]\s+|\n+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }

@@ -104,4 +104,107 @@ describe("CV heuristic parser", () => {
     expect(draft.projects[0]?.name).toBe("Tri-City Job Fair");
     expect(draft.aspirations).toContain("Generative Artificial Intelligence");
   });
+
+  it("splits middot-separated skills from PDF text into individual tags", () => {
+    const draft = parseCvTextToDraft(`
+      Krystian Thiede
+      Full Stack Developer
+
+      Tags | Skills
+      JavaScript · TypeScript · SASS · NodeJS · PHP · PostgreSQL · MongoDB · Git · Docker
+      Photoshop · Illustrator · Figma · ReactJS · NextJs · NestJS · FeathersJS · Yii2
+    `);
+
+    expect(draft.skills).toEqual([
+      "JavaScript",
+      "TypeScript",
+      "SASS",
+      "NodeJS",
+      "PHP",
+      "PostgreSQL",
+      "MongoDB",
+      "Git",
+      "Docker",
+      "Photoshop",
+      "Illustrator",
+      "Figma",
+      "ReactJS",
+      "NextJs",
+      "NestJS",
+      "FeathersJS",
+      "Yii2",
+    ]);
+  });
+
+  it("keeps middot-separated experience entries from multi-page extracted CV text", () => {
+    const draft = parseCvTextToDraft(`
+      Krystian Thiede
+      Senior Software Developer
+      AI-assisted full-stack engineering
+      krystian.thiede@gmail.com
+
+      experience
+      Senior Software Engineer · KEH Camera
+      JAN. 2026 - now
+      • Building and evolving full-stack product features.
+      Senior Software Developer · Stibo Systems
+      APR. 2023 - DEC. 2025
+      • Develop and maintain frontend applications.
+      Senior Full Stack Developer · SolveQ
+      SEPT. 2019 - APR. 2023
+      • Developed full-stack applications.
+      Full Stack Developer · Freelancer
+      FEB. 2015 - SEPT. 2019
+      • Built web applications for clients.
+      PHP Developer · G-Forces Web Management Polska
+      OCT. 2013 - FEB. 2015
+      • Developed automotive e-commerce software.
+      Frontend Developer / PHP Developer · OPERON Sp. z o.o.
+      JUN. 2010 - AUG. 2012
+      • Built publishing house web applications.
+      IT Trainer · iSpot Apple Premium Reseller SAD sp. z o.o.
+      2007 - 2010
+      • Led IT and creative software trainings.
+    `);
+
+    expect(draft.personal.headline).toBe("Senior Software Developer");
+    expect(draft.personal.secondHeadline).toBe("AI-assisted full-stack engineering");
+    expect(draft.experience.map((item) => item.company)).toEqual([
+      "KEH Camera",
+      "Stibo Systems",
+      "SolveQ",
+      "Freelancer",
+      "G-Forces Web Management Polska",
+      "OPERON Sp. z o.o.",
+      "iSpot Apple Premium Reseller SAD sp. z o.o.",
+    ]);
+    expect(draft.experience[5]).toMatchObject({
+      role: "Frontend Developer / PHP Developer",
+      company: "OPERON Sp. z o.o.",
+    });
+  });
+
+  it("parses languages from inline and dedicated language sections", () => {
+    const inlineDraft = parseCvTextToDraft(`
+      Krystian Thiede
+      Senior Software Developer
+      Languages: Polish native, English B2/C1
+    `);
+    const sectionDraft = parseCvTextToDraft(`
+      Krystian Thiede
+      Senior Software Developer
+
+      Language proficiency
+      Polish - native
+      English – professional working proficiency
+      German A2
+    `);
+
+    expect(inlineDraft.languages).toEqual(["Polish native", "English B2/C1"]);
+    expect(sectionDraft.languages).toEqual([
+      "Polish - native",
+      "English - professional working proficiency",
+      "German A2",
+    ]);
+  });
 });

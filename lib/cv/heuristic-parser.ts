@@ -29,7 +29,14 @@ const sectionAliases: Record<SectionKey, string[]> = {
   projects: ["projects", "my projects", "selected projects", "portfolio"],
   education: ["education", "academic background"],
   certifications: ["certifications", "certificates", "courses"],
-  languages: ["languages", "language"],
+  languages: [
+    "languages",
+    "language",
+    "language skills",
+    "language proficiency",
+    "spoken languages",
+    "foreign languages",
+  ],
   aspirations: ["aspirations", "career aspirations"],
 };
 
@@ -40,12 +47,14 @@ export function parseCvTextToDraft(text: string): CvDraft {
   const sections = collectSections(lines);
   const draft = createEmptyCvDraft();
   const contact = parseContact(lines);
+  const headlines = findHeadlines(lines);
 
   draft.personal = {
     ...draft.personal,
     ...contact,
     name: findCandidateName(lines),
-    headline: findHeadline(lines),
+    headline: headlines.headline,
+    secondHeadline: headlines.secondHeadline,
   };
   draft.summary = parseParagraph(sections.summary) || parseSummaryFallback(lines);
   draft.skills = parseListSection(sections.skills);
@@ -53,7 +62,7 @@ export function parseCvTextToDraft(text: string): CvDraft {
   draft.projects = parseProjects(sections.projects);
   draft.education = parseEducation(sections.education);
   draft.certifications = parseListSection(sections.certifications);
-  draft.languages = parseListSection(sections.languages);
+  draft.languages = parseLanguages(sections.languages);
   draft.aspirations = parseParagraph(sections.aspirations);
 
   return normalizeCvDraft(draft);
@@ -81,6 +90,18 @@ function collectSections(lines: string[]) {
   let current: SectionKey | null = null;
 
   for (const line of lines) {
+    const inlineHeading = splitInlineSectionHeading(line);
+
+    if (inlineHeading) {
+      current = inlineHeading.key;
+
+      if (inlineHeading.value) {
+        sections[current].push(inlineHeading.value);
+      }
+
+      continue;
+    }
+
     const heading = matchSectionHeading(line);
 
     if (heading) {
@@ -94,6 +115,25 @@ function collectSections(lines: string[]) {
   }
 
   return sections;
+}
+
+function splitInlineSectionHeading(line: string): { key: SectionKey; value: string } | null {
+  const match = line.match(/^([^:]{1,40}):\s*(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const key = matchSectionHeading(match[1] ?? "");
+
+  if (!key) {
+    return null;
+  }
+
+  return {
+    key,
+    value: match[2]?.trim() ?? "",
+  };
 }
 
 function matchSectionHeading(line: string): SectionKey | null {
@@ -156,22 +196,51 @@ function findCandidateName(lines: string[]) {
   return candidate?.name ?? "";
 }
 
-function findHeadline(lines: string[]) {
+function findHeadlines(lines: string[]) {
   const candidate = getNameCandidate(lines);
   const start = candidate ? candidate.startIndex + candidate.lineCount : 0;
+  const headlineLines: string[] = [];
 
+  for (const line of lines.slice(start, start + 8)) {
+    if (isHeadlineBoundary(line)) {
+      break;
+    }
+
+    if (!isHeadlineCandidate(line)) {
+      continue;
+    }
+
+    headlineLines.push(line);
+
+    if (headlineLines.length >= 2) {
+      break;
+    }
+  }
+
+  return {
+    headline: headlineLines[0] ?? "",
+    secondHeadline: headlineLines[1] ?? "",
+  };
+}
+
+function isHeadlineCandidate(line: string) {
   return (
-    lines
-      .slice(start, start + 5)
-      .find(
-        (line) =>
-          line.length <= 110 &&
-          !emailPattern.test(line) &&
-          !phonePattern.test(line) &&
-          !urlPattern.test(line) &&
-          !matchSectionHeading(line) &&
-          !ignoredHeadlineLines.has(normalizeHeading(line)),
-      ) ?? ""
+    line.length <= 110 &&
+    !emailPattern.test(line) &&
+    !phonePattern.test(line) &&
+    !urlPattern.test(line) &&
+    !matchSectionHeading(line) &&
+    !ignoredHeadlineLines.has(normalizeHeading(line))
+  );
+}
+
+function isHeadlineBoundary(line: string) {
+  return (
+    emailPattern.test(line) ||
+    phonePattern.test(line) ||
+    urlPattern.test(line) ||
+    matchSectionHeading(line) ||
+    ignoredHeadlineLines.has(normalizeHeading(line))
   );
 }
 
@@ -235,23 +304,48 @@ function parseParagraph(lines: string[]) {
 function parseListSection(lines: string[]) {
   return unique(
     lines
-      .flatMap((line) => cleanBullet(line).split(/,|;|\s\|\s/))
+      .flatMap((line) => splitLooseList(cleanBullet(line)))
       .map((value) => value.trim())
       .filter(Boolean),
   );
+}
+
+function parseLanguages(lines: string[]) {
+  return unique(
+    lines
+      .flatMap((line) => splitLooseList(cleanBullet(line)))
+      .map(cleanLanguageValue)
+      .filter(Boolean)
+      .filter((value) => value.length <= 80 && !matchSectionHeading(value)),
+  );
+}
+
+function splitLooseList(value: string) {
+  return value.split(/,|;|\s\|\s|\s+[·•]\s+/);
+}
+
+function cleanLanguageValue(value: string) {
+  return value
+    .replace(/^languages?\s*[:|-]\s*/i, "")
+    .replace(/\s*[–—]\s*/g, " - ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function parseExperience(lines: string[]): CvExperienceItem[] {
   const entries: CvExperienceItem[] = [];
   let current: CvExperienceItem | null = null;
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nextLine = lines[index + 1] ?? "";
+
     if (isPeriodLine(line) && current) {
       current.period = line;
       continue;
     }
 
-    if (isJobHeading(line)) {
+    if (isJobHeading(line, nextLine)) {
       if (current) {
         entries.push(current);
       }
@@ -291,7 +385,7 @@ function parseExperience(lines: string[]): CvExperienceItem[] {
 function createExperienceFromHeading(line: string): CvExperienceItem {
   const period = line.match(periodPattern)?.[0] ?? "";
   const heading = period ? line.replace(period, "").replace(/[-|,]+$/g, "").trim() : line;
-  const [role, company = ""] = heading.split(/(?:\s+\/\s*|\s*@\s*|\s*\|\s*|\s+\bat\b\s+)/i, 2);
+  const [role, company = ""] = splitRoleCompany(heading);
 
   return {
     role: role?.trim() ?? "",
@@ -300,6 +394,27 @@ function createExperienceFromHeading(line: string): CvExperienceItem {
     period,
     bullets: [],
   };
+}
+
+function splitRoleCompany(heading: string) {
+  const separators = [
+    /\s+·\s+/,
+    /\s+@\s+/,
+    /\s+\bat\b\s+/i,
+    /\s+\|\s+/,
+    /\s*\/\s*/,
+    /\s+-\s+/,
+  ];
+
+  for (const separator of separators) {
+    const parts = heading.split(separator, 2);
+
+    if (parts.length === 2 && parts[0]?.trim() && parts[1]?.trim()) {
+      return parts;
+    }
+  }
+
+  return [heading, ""];
 }
 
 function parseProjects(lines: string[]) {
@@ -407,12 +522,18 @@ function isPeriodLine(line: string) {
   return periodPattern.test(line) && line.replace(periodPattern, "").trim().length <= 8;
 }
 
-function isJobHeading(line: string) {
+function isJobHeading(line: string, nextLine = "") {
   return (
     !isBulletLine(line) &&
     !line.endsWith(":") &&
+    !line.includes(":") &&
     line.length <= 140 &&
-    (/\s+\/\s*\S/.test(line) || /\s+\bat\b\s+/i.test(line) || Boolean(line.match(periodPattern)))
+    (/\/\s*\S/.test(line) ||
+      /\s+\bat\b\s+/i.test(line) ||
+      /\s+·\s+/.test(line) ||
+      /\s+-\s+\S/.test(line) ||
+      Boolean(line.match(periodPattern)) ||
+      Boolean(nextLine && isPeriodLine(nextLine)))
   );
 }
 
