@@ -108,20 +108,31 @@ export type QuickEvalRun = {
   targetTitle: string;
   sourceType?: SourceType;
   model: string;
+  minimumScore: number;
   recallAtK: number;
   mrr: number;
   averageLatencyMs: number;
   passRate: number;
+  positivePassRate: number;
+  negativePassRate: number;
+  warnings: string[];
   cases: QuickEvalCaseResult[];
 };
+
+export type QuickEvalQueryType = "positive" | "negative";
 
 export type QuickEvalCaseResult = {
   id: string;
   query: string;
+  queryType: QuickEvalQueryType;
   expectedTitle: string;
+  expectedBehavior: string;
   retrievedTitles: string[];
   foundExpected: boolean;
   firstRelevantRank: number | null;
+  bestExpectedScore: number | null;
   reciprocalRank: number;
+  passed: boolean;
+  failureReason?: string;
   latencyMs: number;
 };

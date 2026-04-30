@@ -107,6 +107,7 @@ const ragPromptOptions = [
 ];
 
 const alignedFormLabelHeight = 46;
+const defaultEvalMinimumScore = 0.45;
 
 const navigationItems: Array<{
   value: TourTab;
@@ -368,7 +369,7 @@ function ProjectInfoModal({
               CV Maker and LinkedIn comparison
             </Text>
             <Text size="sm" c="dimmed">
-              Searchable CV PDFs can be parsed into an editable draft, optionally improved with AI,
+              Searchable CV PDFs can be parsed into an editable draft, optionally classified with AI,
               compared with user-provided LinkedIn export data, and exported as Markdown or a new A4 PDF.
             </Text>
           </Paper>
@@ -1438,6 +1439,8 @@ function SearchPanel({
   const [topK, setTopK] = useState<number | string>(5);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const { documents, isLoadingDocuments, refreshDocuments } = useDocumentInventory("Search scope failed");
+  const resultSourceMap = useMemo(() => getResultSourceMap(results), [results]);
 
   async function handleSearch() {
     setIsSearching(true);
@@ -1481,6 +1484,16 @@ function SearchPanel({
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
+          <OperationScopeCard
+            description="Search scope: all indexed Qdrant documents. TopK returns the best matching chunks, not whole documents."
+            documents={documents}
+            isLoading={isLoadingDocuments}
+            mode="all"
+            onNavigate={onNavigate}
+            onRefresh={refreshDocuments}
+            title="Semantic search scope"
+            topK={getNumericTopK(topK)}
+          />
           <AlignedFormRow dataTour="search-form" templateColumns="minmax(0, 1fr) 110px max-content">
             <AlignedFormField
               label="Query"
@@ -1517,23 +1530,30 @@ function SearchPanel({
           <Divider />
           <Stack gap="sm" data-tour="search-results">
             {results.length > 0 ? (
-              results.map((result) => (
-                <Paper key={result.id} withBorder radius="md" p="md">
-                  <Group justify="space-between" align="flex-start">
-                    <div>
-                      <Group gap="xs">
-                        <Text fw={600}>{result.title}</Text>
-                        <Badge variant="light">{getSourceTypeLabel(result.sourceType)}</Badge>
-                        <Badge variant="light">chunk {result.chunkIndex + 1}</Badge>
-                      </Group>
-                      <Text size="sm" c="dimmed" mt={6}>
-                        {result.text}
-                      </Text>
-                    </div>
-                    <Code>{result.score.toFixed(2)}</Code>
-                  </Group>
-                </Paper>
-              ))
+              <>
+                <SourceMapPanel
+                  description="Documents that actually returned chunks for the last query."
+                  map={resultSourceMap}
+                  title="Result source map"
+                />
+                {results.map((result) => (
+                  <Paper key={result.id} withBorder radius="md" p="md">
+                    <Group justify="space-between" align="flex-start">
+                      <div>
+                        <Group gap="xs">
+                          <Text fw={600}>{result.title}</Text>
+                          <Badge variant="light">{getSourceTypeLabel(result.sourceType)}</Badge>
+                          <Badge variant="light">chunk {result.chunkIndex + 1}</Badge>
+                        </Group>
+                        <Text size="sm" c="dimmed" mt={6}>
+                          {result.text}
+                        </Text>
+                      </div>
+                      <Code>{result.score.toFixed(2)}</Code>
+                    </Group>
+                  </Paper>
+                ))}
+              </>
             ) : (
               <EmptyState
                 icon={<Search size={20} />}
@@ -1570,6 +1590,11 @@ function ChatPanel({
   const [topK, setTopK] = useState<number | string>(5);
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [isAsking, setIsAsking] = useState(false);
+  const { documents, isLoadingDocuments, refreshDocuments } = useDocumentInventory("RAG scope failed");
+  const contextSourceMap = useMemo(
+    () => getResultSourceMap(chatResponse?.retrievedChunks ?? []),
+    [chatResponse],
+  );
 
   async function handleAsk() {
     setIsAsking(true);
@@ -1614,6 +1639,16 @@ function ChatPanel({
     <Stack gap="md">
       <Card withBorder radius="md" padding="lg">
         <Stack gap="md">
+          <OperationScopeCard
+            description="RAG scope: all indexed Qdrant documents. The answer is generated only from retrieved TopK chunks."
+            documents={documents}
+            isLoading={isLoadingDocuments}
+            mode="all"
+            onNavigate={onNavigate}
+            onRefresh={refreshDocuments}
+            title="RAG retrieval scope"
+            topK={getNumericTopK(topK)}
+          />
           <AlignedFormRow dataTour="chat-form" templateColumns="minmax(0, 1fr) 190px 110px max-content">
             <AlignedFormField
               label="Question"
@@ -1685,6 +1720,11 @@ function ChatPanel({
                     </Badge>
                   ))}
                 </Group>
+                <SourceMapPanel
+                  description="Documents and chunks that were passed into the prompt as context."
+                  map={contextSourceMap}
+                  title="Context source map"
+                />
               </Stack>
             ) : (
               <EmptyState
@@ -2080,10 +2120,12 @@ function EvalsPanel({
 }) {
   const [targetTitle, setTargetTitle] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<SourceType>("cv");
-  const [queries, setQueries] = useState(
+  const [positiveQueries, setPositiveQueries] = useState(
     "RAG and vector search experience\nTypeScript and Node.js experience\nAI evaluation pipelines",
   );
+  const [negativeQueries, setNegativeQueries] = useState("moon discovering\nenterprise COBOL payroll");
   const [topK, setTopK] = useState<number | string>(5);
+  const [minimumScore, setMinimumScore] = useState<number | string>(defaultEvalMinimumScore);
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [run, setRun] = useState<QuickEvalRun | null>(null);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
@@ -2093,6 +2135,12 @@ function EvalsPanel({
     [documents, sourceType],
   );
   const selectedTargetTitle = getSelectedDocumentTitle(targetTitle, documentOptions);
+  const evalRetrievedMap = useMemo(() => getEvalRetrievedTitleMap(run, documents), [documents, run]);
+  const evalSearchPool = useMemo(
+    () => documents.filter((document) => document.sourceType === sourceType),
+    [documents, sourceType],
+  );
+  const hasLowCorpusConfidence = evalSearchPool.length > 0 && evalSearchPool.length < 2;
 
   const loadDocuments = useCallback(async () => {
     setIsLoadingDocuments(true);
@@ -2136,15 +2184,19 @@ function EvalsPanel({
 
   async function handleRunPdfEvals() {
     const expectedTitle = selectedTargetTitle?.trim() ?? "";
-    const queryList = queries
+    const positiveQueryList = positiveQueries
+      .split("\n")
+      .map((query) => query.trim())
+      .filter(Boolean);
+    const negativeQueryList = negativeQueries
       .split("\n")
       .map((query) => query.trim())
       .filter(Boolean);
 
-    if (!expectedTitle || queryList.length === 0) {
+    if (!expectedTitle || positiveQueryList.length + negativeQueryList.length === 0) {
       notifications.show({
         title: "PDF eval failed",
-        message: "Provide the imported document title and at least one query.",
+        message: "Provide the imported document title and at least one positive or negative query.",
         color: "red",
       });
       return;
@@ -2162,8 +2214,10 @@ function EvalsPanel({
           embeddingProfile,
           targetTitle: expectedTitle,
           sourceType,
-          queries: queryList,
+          positiveQueries: positiveQueryList,
+          negativeQueries: negativeQueryList,
           topK: getNumericTopK(topK),
+          minimumScore: getNumericMinimumScore(minimumScore),
         }),
       });
       const payload = await readApiResponse<QuickEvalRunResponse>(response);
@@ -2175,7 +2229,7 @@ function EvalsPanel({
       setRun(payload.run);
       notifications.show({
         title: "PDF eval complete",
-        message: `${payload.run.cases.length} queries checked against ${expectedTitle}`,
+        message: `${payload.run.cases.length} positive/negative queries checked against ${expectedTitle}`,
         color: "green",
       });
     } catch (error) {
@@ -2198,11 +2252,11 @@ function EvalsPanel({
               <Group gap="xs">
                 <Search size={18} />
                 <Title order={3} size="h4">
-                  PDF retrieval evals
+                  Retrieval quality check
                 </Title>
               </Group>
               <Text size="sm" c="dimmed" mt={4}>
-                Checks whether each query retrieves the selected document in TopK.
+                Tests retrieval quality with positive queries, negative queries, and a minimum similarity score.
               </Text>
             </div>
             <Group>
@@ -2224,8 +2278,26 @@ function EvalsPanel({
               </Button>
             </Group>
           </Group>
+          <OperationScopeCard
+            description="Eval scope: queries search the selected source type. Positive queries should match the expected document above the score threshold; negative queries should not."
+            documents={documents}
+            isLoading={isLoadingDocuments}
+            mode="sourceType"
+            onNavigate={onNavigate}
+            onRefresh={loadDocuments}
+            selectedTitle={selectedTargetTitle}
+            sourceType={sourceType}
+            title="Retrieval eval scope"
+            topK={getNumericTopK(topK)}
+          />
+          {hasLowCorpusConfidence ? (
+            <Alert color="yellow" variant="light" title="Limited eval confidence">
+              This source type currently has only one indexed document. Negative queries can still test the score
+              threshold, but this run does not measure competition between multiple documents.
+            </Alert>
+          ) : null}
           <Stack gap="md" data-tour="evals-form">
-            <AlignedFormRow templateColumns="minmax(0, 1fr) 160px 130px">
+            <AlignedFormRow templateColumns="minmax(0, 1fr) 160px 130px 150px">
               <AlignedFormField label="Expected document" description="Document that should appear in TopK">
                 <Select
                   aria-label="Expected document"
@@ -2253,22 +2325,48 @@ function EvalsPanel({
                   value={topK}
                 />
               </AlignedFormField>
+              <AlignedFormField label="Minimum score" description="Similarity threshold">
+                <NumberInput
+                  aria-label="Eval minimum score"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={setMinimumScore}
+                  value={minimumScore}
+                />
+              </AlignedFormField>
             </AlignedFormRow>
-            <Textarea
-              label="Queries"
-              description="One query per line. Each query should represent evidence you expect in the selected document."
-              autosize
-              minRows={3}
-              onChange={(event) => setQueries(event.currentTarget.value)}
-              value={queries}
-            />
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+              <Textarea
+                label="Positive queries"
+                description="One query per line. These should retrieve the expected document above the score threshold."
+                autosize
+                minRows={4}
+                onChange={(event) => setPositiveQueries(event.currentTarget.value)}
+                value={positiveQueries}
+              />
+              <Textarea
+                label="Negative queries"
+                description="One query per line. These should not retrieve the expected document above the score threshold."
+                autosize
+                minRows={4}
+                onChange={(event) => setNegativeQueries(event.currentTarget.value)}
+                value={negativeQueries}
+              />
+            </SimpleGrid>
           </Stack>
           {run ? (
             <Stack gap="md" data-tour="evals-results">
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
-                <MetricCard label="Recall@K" value={run.recallAtK.toFixed(2)} detail="expected document found" />
-                <MetricCard label="MRR" value={run.mrr.toFixed(2)} detail="rank quality" />
-                <MetricCard label="Pass rate" value={`${Math.round(run.passRate)}%`} detail="queries passed" />
+              {run.warnings.length > 0 ? (
+                <Alert color="yellow" variant="light" title="Eval caveats">
+                  {run.warnings.join(" ")}
+                </Alert>
+              ) : null}
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="sm">
+                <MetricCard label="Positive recall@K" value={run.recallAtK.toFixed(2)} detail="positive queries" />
+                <MetricCard label="Negative rejection" value={`${Math.round(run.negativePassRate)}%`} detail="negative queries" />
+                <MetricCard label="MRR" value={run.mrr.toFixed(2)} detail="positive rank quality" />
+                <MetricCard label="Pass rate" value={`${Math.round(run.passRate)}%`} detail="all cases passed" />
                 <MetricCard label="Latency" value={formatLatency(run.averageLatencyMs)} detail={run.model} />
               </SimpleGrid>
               <Progress value={run.passRate} color={run.passRate >= 80 ? "green" : "yellow"} />
@@ -2276,27 +2374,53 @@ function EvalsPanel({
                 <Table verticalSpacing="sm">
                   <Table.Thead>
                     <Table.Tr>
+                      <Table.Th>Type</Table.Th>
                       <Table.Th>Query</Table.Th>
-                      <Table.Th>Expected title</Table.Th>
+                      <Table.Th>Expected behavior</Table.Th>
                       <Table.Th>Retrieved titles</Table.Th>
+                      <Table.Th>Best expected score</Table.Th>
                       <Table.Th>Rank</Table.Th>
+                      <Table.Th>Result</Table.Th>
+                      <Table.Th>Reason</Table.Th>
                       <Table.Th>Latency</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {run.cases.map((row) => (
                       <Table.Tr key={row.id}>
+                        <Table.Td>
+                          <Badge color={row.queryType === "positive" ? "green" : "gray"} variant="light">
+                            {row.queryType}
+                          </Badge>
+                        </Table.Td>
                         <Table.Td>{row.query}</Table.Td>
-                        <Table.Td>{row.expectedTitle}</Table.Td>
+                        <Table.Td>
+                          <Text size="sm" lineClamp={2}>
+                            {row.expectedBehavior}
+                          </Text>
+                        </Table.Td>
                         <Table.Td>
                           <Text size="sm" lineClamp={2}>
                             {row.retrievedTitles.join(", ")}
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <Badge color={row.foundExpected ? "green" : "red"} variant="light">
+                          {typeof row.bestExpectedScore === "number" ? row.bestExpectedScore.toFixed(3) : "-"}
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={row.firstRelevantRank ? "blue" : "gray"} variant="light">
                             {row.firstRelevantRank ? `#${row.firstRelevantRank}` : "miss"}
                           </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={row.passed ? "green" : "red"} variant="light">
+                            {row.passed ? "pass" : "fail"}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c={row.failureReason ? undefined : "dimmed"} lineClamp={2}>
+                            {row.failureReason ?? "Meets expected behavior."}
+                          </Text>
                         </Table.Td>
                         <Table.Td>{formatLatency(row.latencyMs)}</Table.Td>
                       </Table.Tr>
@@ -2304,13 +2428,20 @@ function EvalsPanel({
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
+              {evalRetrievedMap.length > 0 ? (
+                <SourceMapPanel
+                  description="Titles that appeared in the eval results, counted across all queries."
+                  map={evalRetrievedMap}
+                  title="Eval retrieved title map"
+                />
+              ) : null}
             </Stack>
           ) : (
             <div data-tour="evals-results">
               <EmptyState
                 icon={<Gauge size={20} />}
                 title="Run a retrieval quality check"
-                description="Choose the expected document and test whether representative queries retrieve it in TopK."
+                description="Choose the expected document, add positive and negative queries, then check retrieval quality with a score threshold."
                 actions={
                   <>
                     <Button size="xs" onClick={handleRunPdfEvals} loading={isRunning}>
@@ -2327,6 +2458,226 @@ function EvalsPanel({
         </Stack>
       </Card>
     </Stack>
+  );
+}
+
+function OperationScopeCard({
+  description,
+  documents,
+  isLoading,
+  mode,
+  onNavigate,
+  onRefresh,
+  selectedTitle,
+  sourceType,
+  title,
+  topK,
+}: {
+  description: string;
+  documents: IndexedDocument[];
+  isLoading: boolean;
+  mode: "all" | "sourceType";
+  onNavigate: (tab: TourTab) => void;
+  onRefresh: () => void;
+  selectedTitle?: string | null;
+  sourceType?: SourceType;
+  title: string;
+  topK: number;
+}) {
+  const scopedDocuments =
+    mode === "sourceType" && sourceType
+      ? documents.filter((document) => document.sourceType === sourceType)
+      : documents;
+  const totalChunks = scopedDocuments.reduce((sum, document) => sum + document.chunks, 0);
+  const scopeLabel =
+    mode === "sourceType" && sourceType
+      ? `${getSourceTypeLabel(sourceType)} documents`
+      : "All indexed documents";
+
+  return (
+    <Paper withBorder radius="md" p="md">
+      <Stack gap="sm">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Group gap="xs">
+              <Database size={17} />
+              <Text fw={700}>{title}</Text>
+              <Badge variant="light">{scopeLabel}</Badge>
+            </Group>
+            <Text size="sm" c="dimmed" mt={4}>
+              {description}
+            </Text>
+          </div>
+          <Button
+            leftSection={<RefreshCw size={14} />}
+            loading={isLoading}
+            onClick={onRefresh}
+            size="xs"
+            variant="default"
+          >
+            Refresh scope
+          </Button>
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+          <MiniScopeMetric label="Documents in scope" value={String(scopedDocuments.length)} />
+          <MiniScopeMetric label="Chunks in scope" value={String(totalChunks)} />
+          <MiniScopeMetric label="TopK retrieval" value={`up to ${topK} chunks`} />
+        </SimpleGrid>
+
+        {selectedTitle ? (
+          <Alert color="blue" variant="light">
+            Expected document: <strong>{selectedTitle}</strong>. Retrieval still ranks chunks from the search pool
+            below; positive cases require this title above the score threshold, while negative cases should stay below it.
+          </Alert>
+        ) : null}
+
+        {scopedDocuments.length > 0 ? (
+          <DocumentScopeTable documents={scopedDocuments} selectedTitle={selectedTitle} />
+        ) : (
+          <EmptyState
+            icon={<Database size={20} />}
+            title="No documents in this operation scope"
+            description="Import a CV, job offer, or knowledge note before running this operation."
+            actions={
+              <Button size="xs" variant="default" onClick={() => onNavigate("documents")}>
+                Go to Documents
+              </Button>
+            }
+          />
+        )}
+      </Stack>
+    </Paper>
+  );
+}
+
+function MiniScopeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Text fw={700} size="sm">
+        {value}
+      </Text>
+    </Paper>
+  );
+}
+
+function DocumentScopeTable({
+  documents,
+  selectedTitle,
+}: {
+  documents: IndexedDocument[];
+  selectedTitle?: string | null;
+}) {
+  return (
+    <Table.ScrollContainer minWidth={620}>
+      <Table verticalSpacing="xs">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Document</Table.Th>
+            <Table.Th>Type</Table.Th>
+            <Table.Th>Chunks</Table.Th>
+            <Table.Th>Tags</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {documents.map((document) => {
+            const isExpected = selectedTitle === document.title;
+
+            return (
+              <Table.Tr key={`${document.sourceType}-${document.title}`}>
+                <Table.Td>
+                  <Group gap="xs">
+                    <Text fw={isExpected ? 700 : 500}>{document.title}</Text>
+                    {isExpected ? (
+                      <Badge color="blue" variant="light">
+                        expected
+                      </Badge>
+                    ) : null}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Badge variant="light">{getSourceTypeLabel(document.sourceType)}</Badge>
+                </Table.Td>
+                <Table.Td>{document.chunks}</Table.Td>
+                <Table.Td>
+                  {document.tags.length > 0 ? (
+                    <Group gap={4}>
+                      {document.tags.map((tag, tagIndex) => (
+                        <Badge key={`${tag}-${tagIndex}`} variant="outline" color="gray">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </Group>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      -
+                    </Text>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
+function SourceMapPanel({
+  description,
+  map,
+  title,
+}: {
+  description: string;
+  map: SourceMapItem[];
+  title: string;
+}) {
+  if (map.length === 0) {
+    return null;
+  }
+
+  return (
+    <Paper withBorder radius="md" p="md">
+      <Stack gap="sm">
+        <div>
+          <Text fw={700}>{title}</Text>
+          <Text size="sm" c="dimmed">
+            {description}
+          </Text>
+        </div>
+        <Table.ScrollContainer minWidth={620}>
+          <Table verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Document</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Returned chunks</Table.Th>
+                <Table.Th>Chunk indexes</Table.Th>
+                <Table.Th>Best score</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {map.map((item) => (
+                <Table.Tr key={`${item.sourceType}-${item.title}`}>
+                  <Table.Td>
+                    <Text fw={600}>{item.title}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light">{getSourceTypeLabel(item.sourceType)}</Badge>
+                  </Table.Td>
+                  <Table.Td>{item.returnedChunks}</Table.Td>
+                  <Table.Td>{item.chunkIndexes.length > 0 ? item.chunkIndexes.join(", ") : "-"}</Table.Td>
+                  <Table.Td>{typeof item.bestScore === "number" ? item.bestScore.toFixed(2) : "-"}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Paper>
   );
 }
 
@@ -2409,6 +2760,49 @@ function getSelectedDocumentTitle(
   return options[0]?.value ?? null;
 }
 
+function useDocumentInventory(errorTitle: string) {
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+
+  const refreshDocuments = useCallback(async () => {
+    setIsLoadingDocuments(true);
+
+    try {
+      setDocuments(await fetchDocumentInventory());
+    } catch (error) {
+      notifications.show({
+        title: errorTitle,
+        message: getErrorMessage(error),
+        color: "red",
+      });
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, [errorTitle]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void refreshDocuments();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [refreshDocuments]);
+
+  useEffect(() => {
+    window.addEventListener(DOCUMENTS_CHANGED_EVENT, refreshDocuments);
+
+    return () => {
+      window.removeEventListener(DOCUMENTS_CHANGED_EVENT, refreshDocuments);
+    };
+  }, [refreshDocuments]);
+
+  return {
+    documents,
+    isLoadingDocuments,
+    refreshDocuments,
+  };
+}
+
 async function fetchDocumentInventory() {
   const response = await fetch("/api/documents");
   const payload = await readApiResponse<DocumentsResponse>(response);
@@ -2418,6 +2812,73 @@ async function fetchDocumentInventory() {
   }
 
   return payload.documents;
+}
+
+function getResultSourceMap(results: SearchResult[]): SourceMapItem[] {
+  const sourceMap = new Map<string, SourceMapItem>();
+
+  for (const result of results) {
+    const key = `${result.sourceType}\u0000${result.title}`;
+    const current = sourceMap.get(key);
+    const chunkIndex = result.chunkIndex + 1;
+
+    if (current) {
+      current.returnedChunks += 1;
+      current.bestScore =
+        typeof current.bestScore === "number"
+          ? Math.max(current.bestScore, result.score)
+          : result.score;
+      current.chunkIndexes = [...new Set([...current.chunkIndexes, chunkIndex])].sort((left, right) => left - right);
+    } else {
+      sourceMap.set(key, {
+        bestScore: result.score,
+        chunkIndexes: [chunkIndex],
+        returnedChunks: 1,
+        sourceType: result.sourceType,
+        title: result.title,
+      });
+    }
+  }
+
+  return [...sourceMap.values()].sort((left, right) => {
+    if (right.returnedChunks !== left.returnedChunks) {
+      return right.returnedChunks - left.returnedChunks;
+    }
+
+    return (right.bestScore ?? 0) - (left.bestScore ?? 0);
+  });
+}
+
+function getEvalRetrievedTitleMap(run: QuickEvalRun | null, documents: IndexedDocument[]): SourceMapItem[] {
+  if (!run) {
+    return [];
+  }
+
+  const documentsByTitle = new Map(documents.map((document) => [document.title, document]));
+  const counts = new Map<string, SourceMapItem>();
+
+  for (const row of run.cases) {
+    for (const title of row.retrievedTitles) {
+      const document = documentsByTitle.get(title);
+      const sourceType = document?.sourceType ?? run.sourceType ?? "knowledge";
+      const key = `${sourceType}\u0000${title}`;
+      const current = counts.get(key);
+
+      if (current) {
+        current.returnedChunks += 1;
+      } else {
+        counts.set(key, {
+          bestScore: null,
+          chunkIndexes: [],
+          returnedChunks: 1,
+          sourceType,
+          title,
+        });
+      }
+    }
+  }
+
+  return [...counts.values()].sort((left, right) => right.returnedChunks - left.returnedChunks);
 }
 
 function emitDocumentsChanged() {
@@ -2476,6 +2937,14 @@ type DocumentsResponse = {
   error?: string;
 };
 
+type SourceMapItem = {
+  bestScore: number | null;
+  chunkIndexes: number[];
+  returnedChunks: number;
+  sourceType: SourceType;
+  title: string;
+};
+
 type TextIngestResponse = {
   documents: number;
   chunks: number;
@@ -2530,6 +2999,7 @@ type QuickEvalRunResponse = {
   model: string;
   dimensions: number;
   topK: number;
+  minimumScore: number;
   run: QuickEvalRun;
   error?: string;
 };
@@ -2542,6 +3012,16 @@ function getNumericTopK(value: number | string) {
   }
 
   return Math.min(Math.max(Math.trunc(parsed), 1), 20);
+}
+
+function getNumericMinimumScore(value: number | string) {
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return defaultEvalMinimumScore;
+  }
+
+  return Math.min(Math.max(parsed, 0), 1);
 }
 
 function getErrorMessage(error: unknown) {
